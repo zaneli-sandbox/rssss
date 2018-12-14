@@ -1,0 +1,9 @@
+backend/target
+**/*.rs.bk
+
+frontend/build/
+frontend/elm-stuff
+frontend/repl-temp-*
+frontend/node_modules
+
+.DS_Store

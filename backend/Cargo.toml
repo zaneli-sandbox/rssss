@@ -5,3 +5,4 @@ authors = ["zaneli <shun.otani@gmail.com>"]
 
 [dependencies]
 actix-web = "0.7"
+listenfd = "0.3"

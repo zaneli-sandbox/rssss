@@ -7,6 +7,7 @@ pub struct Rss {
     title: String,
     description: String,
     link: String,
+    pub_date: Option<String>,
 }
 
 pub fn parse_rss(buf: bytes::Bytes) -> Result<Vec<Rss>, Error> {
@@ -15,6 +16,7 @@ pub fn parse_rss(buf: bytes::Bytes) -> Result<Vec<Rss>, Error> {
     let mut title = String::new();
     let mut link = String::new();
     let mut description = String::new();
+    let mut pub_date = Option::default();
     let mut rs: Vec<Rss> = Vec::new();
     for elem in parser {
         match elem? {
@@ -25,6 +27,7 @@ pub fn parse_rss(buf: bytes::Bytes) -> Result<Vec<Rss>, Error> {
                 "title" => title = text,
                 "link" => link = text,
                 "description" => description = text,
+                "pubDate" => pub_date = Some(text),
                 _ => (),
             },
             XmlEvent::EndElement { name } => {
@@ -33,10 +36,12 @@ pub fn parse_rss(buf: bytes::Bytes) -> Result<Vec<Rss>, Error> {
                         title: title.clone(),
                         link: link.clone(),
                         description: description.clone(),
+                        pub_date: pub_date.clone(),
                     });
                     title = String::new();
                     link = String::new();
                     description = String::new();
+                    pub_date = Option::default();
                 }
                 tag = String::new();
             }

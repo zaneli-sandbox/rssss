@@ -16,6 +16,7 @@ pub mod error;
 pub mod rss;
 
 use actix_web::client::ClientResponse;
+use actix_web::middleware::cors::Cors;
 use actix_web::{
     client, http, server, App, AsyncResponder, Error, HttpMessage, HttpResponse, Query,
 };
@@ -66,7 +67,14 @@ fn main() {
     let mut listenfd = ListenFd::from_env();
 
     let mut server = server::new(|| {
-        App::new().resource("/feed", |r| r.method(http::Method::GET).with(get_feed))
+        App::new().configure(|app| {
+            Cors::for_app(app)
+                .send_wildcard()
+                .allowed_methods(vec!["GET", "POST"])
+                .allowed_header(http::header::CONTENT_TYPE)
+                .resource("/feed", |r| r.method(http::Method::GET).with(get_feed))
+                .register()
+        })
     });
 
     server = if let Some(l) = listenfd.take_tcp_listener(0).unwrap() {

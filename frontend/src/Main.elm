@@ -2,7 +2,7 @@ module Main exposing (Model, Msg(..), init, main, update, view)
 
 import Browser
 import Html exposing (Html, a, button, div, h1, img, input, span, text)
-import Html.Attributes exposing (href, placeholder, src, title, value)
+import Html.Attributes exposing (disabled, href, placeholder, src, title, value)
 import Html.Events exposing (onClick, onInput)
 import Http
 import Json.Decode as Decode
@@ -85,7 +85,14 @@ view : Model -> Html Msg
 view model =
     div []
         [ input [ placeholder "input RSS URL", value model.url, onInput InputURL ] []
-        , button [ onClick GetRSS ] [ text "view RSS" ]
+        , button
+            [ if model.url == "" then
+                disabled True
+
+              else
+                onClick GetRSS
+            ]
+            [ text "view RSS" ]
         , div []
             (List.map
                 (\item ->

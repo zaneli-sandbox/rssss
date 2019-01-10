@@ -9,6 +9,7 @@ extern crate actix_web;
 extern crate bytes;
 extern crate futures;
 extern crate listenfd;
+extern crate scraper;
 extern crate simple_logger;
 extern crate xml;
 

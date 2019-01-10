@@ -1,5 +1,6 @@
 use bytes::buf::IntoBuf;
 use error::Error;
+use scraper::Html;
 use xml::reader::{EventReader, XmlEvent};
 
 #[derive(Debug, Serialize)]
@@ -18,16 +19,17 @@ pub fn parse_rss(buf: bytes::Bytes) -> Result<Vec<Rss>, Error> {
     let mut description = String::new();
     let mut pub_date = Option::default();
     let mut rs: Vec<Rss> = Vec::new();
+
     for elem in parser {
         match elem? {
             XmlEvent::StartElement { name, .. } => {
                 tag = name.to_string();
             }
-            XmlEvent::Characters(text) => match tag.as_ref() {
-                "title" => title = text,
-                "link" => link = text,
-                "description" => description = text,
-                "pubDate" => pub_date = Some(text),
+            XmlEvent::Characters(data) => match tag.as_ref() {
+                "title" => title = data,
+                "link" => link = data,
+                "description" => description = pick_texts(data),
+                "pubDate" => pub_date = Some(data),
                 _ => (),
             },
             XmlEvent::EndElement { name } => {
@@ -49,4 +51,13 @@ pub fn parse_rss(buf: bytes::Bytes) -> Result<Vec<Rss>, Error> {
         };
     }
     Ok(rs)
+}
+
+fn pick_texts(data: String) -> String {
+    let document = Html::parse_document(data.as_ref());
+    let mut texts = String::new();
+    for text in document.root_element().text() {
+        texts.push_str(text)
+    }
+    texts
 }

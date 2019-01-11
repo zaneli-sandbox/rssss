@@ -16,7 +16,7 @@ extern crate xml;
 pub mod error;
 pub mod rss;
 
-use actix_web::client::ClientResponse;
+use actix_web::client::{ClientResponse, SendRequest};
 use actix_web::middleware::cors::Cors;
 use actix_web::{
     client, http, server, App, AsyncResponder, Error, HttpMessage, HttpResponse, Query,
@@ -34,19 +34,27 @@ struct Info {
 fn get_feed(info: Query<Info>) -> Box<Future<Item = HttpResponse, Error = Error>> {
     let url = &info.url;
     debug!("{}", url);
+    send_request(url)
+        .map_err(Error::from)
+        .and_then(|r| retrieve_response(r, true))
+        .responder()
+}
+
+fn send_request(url: &String) -> SendRequest {
     client::get(url)
         .header("User-Agent", "rssss")
         .timeout(Duration::from_secs(60))
         .finish()
         .unwrap()
         .send()
-        .map_err(Error::from)
-        .and_then(retrieve_response)
-        .responder()
 }
 
-fn retrieve_response(res: ClientResponse) -> Box<Future<Item = HttpResponse, Error = Error>> {
-    if res.status().is_success() {
+fn retrieve_response(
+    res: ClientResponse,
+    enable_redirect: bool,
+) -> Box<Future<Item = HttpResponse, Error = Error>> {
+    let status = res.status();
+    if status.is_success() {
         Box::new(
             res.body()
                 .limit(1_048_576) // 1MB
@@ -59,6 +67,22 @@ fn retrieve_response(res: ClientResponse) -> Box<Future<Item = HttpResponse, Err
                     }
                 }),
         )
+    } else if status.is_redirection() && enable_redirect {
+        match res.headers().get("location") {
+            Some(location) => match location.to_str() {
+                Ok(url) => Box::new(
+                    send_request(&url.to_string())
+                        .map_err(Error::from)
+                        .and_then(|r| retrieve_response(r, false)),
+                ),
+                _ => Box::new(future::ok::<HttpResponse, Error>(
+                    HttpResponse::InternalServerError().finish(),
+                )),
+            },
+            _ => Box::new(future::ok::<HttpResponse, Error>(
+                HttpResponse::InternalServerError().finish(),
+            )),
+        }
     } else {
         warn!("Invalid status: {}", res.status());
         Box::new(future::ok::<HttpResponse, Error>(

@@ -47,13 +47,18 @@ fn get_feed(info: Query<Info>) -> Box<Future<Item = HttpResponse, Error = Error>
 
 fn retrieve_response(res: ClientResponse) -> Box<Future<Item = HttpResponse, Error = Error>> {
     if res.status().is_success() {
-        Box::new(res.body().from_err().and_then(|b| match rss::parse_rss(b) {
-            Ok(r) => Ok(HttpResponse::Ok().json(r)),
-            Err(e) => {
-                error!("{}", e);
-                Ok(HttpResponse::InternalServerError().finish())
-            }
-        }))
+        Box::new(
+            res.body()
+                .limit(1_048_576) // 1MB
+                .from_err()
+                .and_then(|b| match rss::parse_rss(b) {
+                    Ok(r) => Ok(HttpResponse::Ok().json(r)),
+                    Err(e) => {
+                        error!("{}", e);
+                        Ok(HttpResponse::InternalServerError().finish())
+                    }
+                }),
+        )
     } else {
         warn!("Invalid status: {}", res.status());
         Box::new(future::ok::<HttpResponse, Error>(

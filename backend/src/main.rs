@@ -31,6 +31,12 @@ struct Info {
     url: String,
 }
 
+impl From<error::Error> for HttpResponse {
+    fn from(e: error::Error) -> HttpResponse {
+        HttpResponse::BadRequest().json::<error::ResponseError>(e.kind().into())
+    }
+}
+
 fn get_feed(info: Query<Info>) -> Box<Future<Item = HttpResponse, Error = Error>> {
     let url = &info.url;
     debug!("{}", url);
@@ -61,10 +67,7 @@ fn retrieve_response(
                 .from_err()
                 .and_then(|b| match rss::parse_rss(b) {
                     Ok(r) => Ok(HttpResponse::Ok().json(r)),
-                    Err(e) => {
-                        error!("{}", e);
-                        Ok(HttpResponse::InternalServerError().finish())
-                    }
+                    Err(e) => Ok(e.into()),
                 }),
         )
     } else if status.is_redirection() && enable_redirect {

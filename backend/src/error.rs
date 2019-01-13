@@ -5,6 +5,24 @@ use std::fmt;
 use std::fmt::Display;
 use xml::reader::Error as XMLReaderError;
 
+#[derive(Serialize)]
+pub struct ResponseError {
+    message: String,
+}
+
+impl<'a> From<&'a ErrorKind> for ResponseError {
+    fn from(e: &'a ErrorKind) -> ResponseError {
+        match e {
+            ErrorKind::InvalidRssError(message) => ResponseError {
+                message: message.to_string(),
+            },
+            _ => ResponseError {
+                message: e.to_string(),
+            },
+        }
+    }
+}
+
 #[derive(Fail, Debug)]
 pub enum ErrorKind {
     #[fail(display = "xml reader error")]
@@ -13,6 +31,8 @@ pub enum ErrorKind {
     PayloadError,
     #[fail(display = "actix client send request error")]
     SendRequestError,
+    #[fail(display = "invalid rss error")]
+    InvalidRssError(String),
 }
 
 impl From<XMLReaderError> for Error {

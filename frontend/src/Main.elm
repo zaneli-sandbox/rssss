@@ -15,6 +15,7 @@ import Json.Decode as Decode
 type alias Model =
     { url : String
     , items : List Item
+    , message : Maybe String
     }
 
 
@@ -26,6 +27,10 @@ type alias Item =
     }
 
 
+type alias ResponseError =
+    { message : String }
+
+
 itemDecoder : Decode.Decoder Item
 itemDecoder =
     Decode.map4 Item
@@ -35,9 +40,15 @@ itemDecoder =
         (Decode.field "description" Decode.string)
 
 
+errDecoder : Decode.Decoder ResponseError
+errDecoder =
+    Decode.map ResponseError
+        (Decode.field "message" Decode.string)
+
+
 init : ( Model, Cmd Msg )
 init =
-    ( { url = "", items = [] }, Cmd.none )
+    ( { url = "", items = [], message = Maybe.Nothing }, Cmd.none )
 
 
 
@@ -48,7 +59,7 @@ type Msg
     = NoOp
     | InputURL String
     | GetRSS
-    | GotRSS (Result Http.Error (List Item))
+    | GotRSS (Result Http.Error (Http.Response String))
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -61,15 +72,51 @@ update msg model =
             ( { model | url = url }, Cmd.none )
 
         GetRSS ->
-            ( model, Http.get { url = buildUrl model, expect = Http.expectJson GotRSS (Decode.list itemDecoder) } )
+            ( model, Http.get { url = buildUrl model, expect = expectJson GotRSS } )
 
         GotRSS result ->
             case result of
-                Ok items ->
-                    ( { model | items = items }, Cmd.none )
+                Ok res ->
+                    case res of
+                        Http.GoodStatus_ metadata body ->
+                            case Decode.decodeString (Decode.list itemDecoder) body of
+                                Ok value ->
+                                    ( { model | items = value, message = Maybe.Nothing }, Cmd.none )
 
-                Err e ->
-                    ( model, Cmd.none )
+                                Err e ->
+                                    ( { model | items = [], message = e |> Decode.errorToString |> Maybe.Just }, Cmd.none )
+
+                        Http.BadStatus_ metadata body ->
+                            case Decode.decodeString errDecoder body of
+                                Ok value ->
+                                    ( { model | items = [], message = Maybe.Just value.message }, Cmd.none )
+
+                                Err _ ->
+                                    ( { model | items = [], message = Maybe.Just metadata.statusText }, Cmd.none )
+
+                        _ ->
+                            ( { model | items = [], message = Maybe.Just "unexpected status" }, Cmd.none )
+
+                Err _ ->
+                    ( { model | items = [], message = Maybe.Just "invalid response" }, Cmd.none )
+
+
+expectJson : (Result Http.Error (Http.Response String) -> msg) -> Http.Expect msg
+expectJson toMsg =
+    Http.expectStringResponse toMsg <|
+        \response ->
+            case response of
+                Http.BadUrl_ url ->
+                    Err (Http.BadUrl url)
+
+                Http.Timeout_ ->
+                    Err Http.Timeout
+
+                Http.NetworkError_ ->
+                    Err Http.NetworkError
+
+                _ ->
+                    Ok response
 
 
 buildUrl : Model -> String
@@ -84,8 +131,8 @@ buildUrl model =
 view : Model -> Html Msg
 view model =
     div []
-        [ input [ placeholder "input RSS URL", value model.url, onInput InputURL ] []
-        , button
+        ([ input [ placeholder "input RSS URL", value model.url, onInput InputURL ] []
+         , button
             [ if model.url == "" then
                 disabled True
 
@@ -93,7 +140,7 @@ view model =
                 onClick GetRSS
             ]
             [ text "view RSS" ]
-        , div []
+         , div []
             (List.map
                 (\item ->
                     div []
@@ -103,7 +150,9 @@ view model =
                 )
                 model.items
             )
-        ]
+         ]
+            ++ (model.message |> Maybe.map (\msg -> [ div [] [ text msg ] ]) |> Maybe.withDefault [])
+        )
 
 
 

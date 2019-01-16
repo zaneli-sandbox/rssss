@@ -16,7 +16,7 @@ pub struct Rss {
 
 pub fn parse_rss(buf: bytes::Bytes) -> Result<Vec<Rss>, Error> {
     let parser = EventReader::new(buf.into_buf());
-    let mut tag = String::new();
+    let mut tag = (Option::default(), String::new());
     let mut title = String::new();
     let mut link = String::new();
     let mut description = String::new();
@@ -33,15 +33,23 @@ pub fn parse_rss(buf: bytes::Bytes) -> Result<Vec<Rss>, Error> {
                     verify_rss(&name, &attributes)?;
                     root = false;
                 }
-                tag = name.to_string();
+                tag = (name.namespace, name.local_name);
             }
-            XmlEvent::Characters(data) => match tag.as_ref() {
-                "title" => title = data,
-                "link" => link = data,
-                "description" => description = pick_texts(data),
-                "pubDate" => pub_date = Some(data),
-                _ => (),
-            },
+            XmlEvent::Characters(data) | XmlEvent::CData(data) => {
+                let (namespace, local_name) = &tag;
+                match (namespace.as_ref().map(|n| n.as_ref()), local_name.as_ref()) {
+                    (_, "title") => title = data,
+                    (_, "link") => link = data,
+                    (_, "description") => description = pick_texts(data),
+                    (Some("http://purl.org/rss/1.0/modules/content/"), "encoded") => {
+                        if description.is_empty() {
+                            description = pick_texts(data)
+                        }
+                    }
+                    (_, "pubDate") => pub_date = Some(data),
+                    _ => (),
+                }
+            }
             XmlEvent::EndElement { name } => {
                 if name.to_string() == "item" {
                     rs.push(Rss {
@@ -55,7 +63,7 @@ pub fn parse_rss(buf: bytes::Bytes) -> Result<Vec<Rss>, Error> {
                     description = String::new();
                     pub_date = Option::default();
                 }
-                tag = String::new();
+                tag = (Option::default(), String::new());
             }
             _ => (),
         };

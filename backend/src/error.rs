@@ -12,13 +12,8 @@ pub struct ResponseError {
 
 impl<'a> From<&'a ErrorKind> for ResponseError {
     fn from(e: &'a ErrorKind) -> ResponseError {
-        match e {
-            ErrorKind::InvalidRssError(message) => ResponseError {
-                message: message.to_string(),
-            },
-            _ => ResponseError {
-                message: e.to_string(),
-            },
+        ResponseError {
+            message: e.to_string(),
         }
     }
 }
@@ -32,7 +27,7 @@ pub enum ErrorKind {
     #[fail(display = "actix client send request error")]
     SendRequestError,
     #[fail(display = "invalid rss error")]
-    InvalidRssError(String),
+    InvalidRssError,
 }
 
 impl From<XMLReaderError> for Error {

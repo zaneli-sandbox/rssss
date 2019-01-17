@@ -38,15 +38,14 @@ impl From<error::Error> for HttpResponse {
 }
 
 fn get_feed(info: Query<Info>) -> Box<Future<Item = HttpResponse, Error = Error>> {
-    let url = &info.url;
-    debug!("{}", url);
-    send_request(url)
+    send_request(&info.url)
         .map_err(Error::from)
         .and_then(|r| retrieve_response(r, 3))
         .responder()
 }
 
 fn send_request(url: &String) -> SendRequest {
+    info!("{}", url);
     client::get(url)
         .header("User-Agent", "rssss")
         .timeout(Duration::from_secs(60))
@@ -71,23 +70,17 @@ fn retrieve_response(
                 }),
         )
     } else if status.is_redirection() && redirect_limit > 0 {
-        match res.headers().get("location") {
-            Some(location) => match location.to_str() {
-                Ok(url) => Box::new(
-                    send_request(&url.to_string())
-                        .map_err(Error::from)
-                        .and_then(move |r| retrieve_response(r, redirect_limit - 1)),
-                ),
-                _ => Box::new(future::ok::<HttpResponse, Error>(
-                    HttpResponse::InternalServerError().finish(),
-                )),
-            },
+        match res.headers().get("location").and_then(|l| l.to_str().ok()) {
+            Some(url) => Box::new(
+                send_request(&url.to_string())
+                    .map_err(Error::from)
+                    .and_then(move |r| retrieve_response(r, redirect_limit - 1)),
+            ),
             _ => Box::new(future::ok::<HttpResponse, Error>(
                 HttpResponse::InternalServerError().finish(),
             )),
         }
     } else {
-        warn!("Invalid status: {}", res.status());
         Box::new(future::ok::<HttpResponse, Error>(
             HttpResponse::build(res.status()).finish(),
         ))

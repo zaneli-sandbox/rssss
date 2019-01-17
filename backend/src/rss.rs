@@ -4,7 +4,6 @@ use error::ErrorKind::InvalidRssError;
 use scraper::Html;
 use xml::attribute::OwnedAttribute;
 use xml::name::OwnedName;
-use xml::namespace::Namespace;
 use xml::reader::{EventReader, XmlEvent};
 
 #[derive(Debug, Serialize, Clone)]
@@ -48,11 +47,9 @@ fn parse(buf: &bytes::Bytes, parser: &mut RssParser) -> Result<Vec<Rss>, Error> 
     for elem in reader {
         match elem? {
             XmlEvent::StartElement {
-                name,
-                attributes,
-                namespace,
+                name, attributes, ..
             } => {
-                parser.parse_start_element(name, attributes, namespace);
+                parser.parse_start_element(name, attributes);
                 if root {
                     parser.verify_rss()?;
                     root = false;
@@ -71,7 +68,7 @@ fn parse(buf: &bytes::Bytes, parser: &mut RssParser) -> Result<Vec<Rss>, Error> 
 }
 
 trait RssParser {
-    fn parse_start_element(&mut self, OwnedName, Vec<OwnedAttribute>, Namespace);
+    fn parse_start_element(&mut self, OwnedName, Vec<OwnedAttribute>);
     fn parse_content(&mut self, String);
     fn parse_end_element(&mut self, OwnedName);
     fn verify_rss(&self) -> Result<(), Error>;
@@ -80,7 +77,7 @@ trait RssParser {
 
 struct RssV20 {
     results: Vec<Rss>,
-    element: (OwnedName, Vec<OwnedAttribute>, Namespace),
+    element: (OwnedName, Vec<OwnedAttribute>),
     title: String,
     link: String,
     description: String,
@@ -91,11 +88,7 @@ impl RssV20 {
     fn new() -> RssV20 {
         RssV20 {
             results: Vec::new(),
-            element: (
-                OwnedName::local(String::new()),
-                Vec::default(),
-                Namespace::empty(),
-            ),
+            element: (OwnedName::local(String::new()), Vec::default()),
             title: String::new(),
             link: String::new(),
             description: String::new(),
@@ -105,14 +98,14 @@ impl RssV20 {
 }
 
 impl RssParser for RssV20 {
-    fn parse_start_element(&mut self, name: OwnedName, attrs: Vec<OwnedAttribute>, ns: Namespace) {
-        self.element = (name, attrs, ns);
+    fn parse_start_element(&mut self, name: OwnedName, attrs: Vec<OwnedAttribute>) {
+        self.element = (name, attrs);
     }
     fn parse_content(&mut self, data: String) {
-        let (name, _, _) = &self.element;
+        let (name, _) = &self.element;
         match (
-            name.namespace.as_ref().map(|n| n.as_ref()),
-            name.local_name.as_ref(),
+            name.namespace.as_ref().map(|n| n.as_str()),
+            name.local_name.as_str(),
         ) {
             (_, "title") => self.title = data,
             (_, "link") => self.link = data,
@@ -141,19 +134,12 @@ impl RssParser for RssV20 {
             self.description = String::new();
             self.pub_date = Option::default();
         }
-        self.element = (
-            OwnedName::local(String::new()),
-            Vec::default(),
-            Namespace::empty(),
-        );
+        self.element = (OwnedName::local(String::new()), Vec::default());
     }
     fn verify_rss(&self) -> Result<(), Error> {
-        let (name, attrs, _) = &self.element;
+        let (name, attrs) = &self.element;
         if name.local_name != "rss" {
-            return Err(Error::from(InvalidRssError(format!(
-                "invalid root element name: {}",
-                name.local_name
-            ))));
+            return Err(Error::from(InvalidRssError));
         }
         let version = attrs
             .iter()
@@ -161,13 +147,11 @@ impl RssParser for RssV20 {
             .map(|a| a.value.as_ref());
         match version {
             Some("2.0") => Ok(()),
-            Some(version) => Err(Error::from(InvalidRssError(format!(
-                "unsupported rss version: {}",
-                version
-            )))),
-            None => Err(Error::from(InvalidRssError(
-                "missing version attribute".to_string(),
-            ))),
+            Some(version) => {
+                warn!("unsupported RSS version: {}", version);
+                Err(Error::from(InvalidRssError))
+            },
+            None => Err(Error::from(InvalidRssError)),
         }
     }
     fn get_results(&self) -> Vec<Rss> {
@@ -177,7 +161,7 @@ impl RssParser for RssV20 {
 
 struct Atom {
     results: Vec<Rss>,
-    element: (OwnedName, Vec<OwnedAttribute>, Namespace),
+    element: (OwnedName, Vec<OwnedAttribute>),
     title: String,
     link: String,
     description: String,
@@ -188,11 +172,7 @@ impl Atom {
     fn new() -> Atom {
         Atom {
             results: Vec::new(),
-            element: (
-                OwnedName::local(String::new()),
-                Vec::default(),
-                Namespace::empty(),
-            ),
+            element: (OwnedName::local(String::new()), Vec::default()),
             title: String::new(),
             link: String::new(),
             description: String::new(),
@@ -201,9 +181,11 @@ impl Atom {
     }
 }
 
+const ATOM_NS: &'static str = "http://www.w3.org/2005/Atom";
+
 impl RssParser for Atom {
-    fn parse_start_element(&mut self, name: OwnedName, attrs: Vec<OwnedAttribute>, ns: Namespace) {
-        if name.namespace == Some("http://www.w3.org/2005/Atom".to_string())
+    fn parse_start_element(&mut self, name: OwnedName, attrs: Vec<OwnedAttribute>) {
+        if name.namespace.as_ref().map(|n| n.as_str()) == Some(ATOM_NS)
             && name.local_name == "link"
             && attrs
                 .iter()
@@ -216,18 +198,18 @@ impl RssParser for Atom {
                 .find(|a| a.name.to_string() == "href")
                 .map(|a| self.link = a.value.clone());
         }
-        self.element = (name, attrs, ns);
+        self.element = (name, attrs);
     }
     fn parse_content(&mut self, data: String) {
-        let (name, _, _) = &self.element;
+        let (name, _) = &self.element;
         match (
-            name.namespace.as_ref().map(|n| n.as_ref()),
-            name.local_name.as_ref(),
+            name.namespace.as_ref().map(|n| n.as_str()),
+            name.local_name.as_str(),
         ) {
-            (Some("http://www.w3.org/2005/Atom"), "title") => self.title = data,
-            (Some("http://www.w3.org/2005/Atom"), "content") => self.description = data,
-            (Some("http://www.w3.org/2005/Atom"), "published") => self.pub_date = Some(data),
-            (Some("http://www.w3.org/2005/Atom"), "updated") => {
+            (Some(ATOM_NS), "title") => self.title = data,
+            (Some(ATOM_NS), "content") => self.description = data,
+            (Some(ATOM_NS), "published") => self.pub_date = Some(data),
+            (Some(ATOM_NS), "updated") => {
                 if self.pub_date.is_none() {
                     self.pub_date = Some(data);
                 }
@@ -236,7 +218,7 @@ impl RssParser for Atom {
         }
     }
     fn parse_end_element(&mut self, name: OwnedName) {
-        if name.namespace == Some("http://www.w3.org/2005/Atom".to_string())
+        if name.namespace.as_ref().map(|n| n.as_str()) == Some(ATOM_NS)
             && name.local_name == "entry"
         {
             let rss = Rss::new(
@@ -252,21 +234,13 @@ impl RssParser for Atom {
             self.description = String::new();
             self.pub_date = Option::default();
         }
-        self.element = (
-            OwnedName::local(String::new()),
-            Vec::default(),
-            Namespace::empty(),
-        );
+        self.element = (OwnedName::local(String::new()), Vec::default());
     }
     fn verify_rss(&self) -> Result<(), Error> {
-        let (name, _, _) = &self.element;
-        if name.local_name != "feed"
-            || name.namespace != Some("http://www.w3.org/2005/Atom".to_string())
+        let (name, _) = &self.element;
+        if name.local_name != "feed" || name.namespace.as_ref().map(|n| n.as_str()) != Some(ATOM_NS)
         {
-            return Err(Error::from(InvalidRssError(format!(
-                "invalid root element: {}",
-                name
-            ))));
+            return Err(Error::from(InvalidRssError));
         }
         Ok(())
     }

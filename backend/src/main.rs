@@ -42,7 +42,7 @@ fn get_feed(info: Query<Info>) -> Box<Future<Item = HttpResponse, Error = Error>
     debug!("{}", url);
     send_request(url)
         .map_err(Error::from)
-        .and_then(|r| retrieve_response(r, true))
+        .and_then(|r| retrieve_response(r, 3))
         .responder()
 }
 
@@ -57,7 +57,7 @@ fn send_request(url: &String) -> SendRequest {
 
 fn retrieve_response(
     res: ClientResponse,
-    enable_redirect: bool,
+    redirect_limit: u8,
 ) -> Box<Future<Item = HttpResponse, Error = Error>> {
     let status = res.status();
     if status.is_success() {
@@ -70,13 +70,13 @@ fn retrieve_response(
                     Err(e) => Ok(e.into()),
                 }),
         )
-    } else if status.is_redirection() && enable_redirect {
+    } else if status.is_redirection() && redirect_limit > 0 {
         match res.headers().get("location") {
             Some(location) => match location.to_str() {
                 Ok(url) => Box::new(
                     send_request(&url.to_string())
                         .map_err(Error::from)
-                        .and_then(|r| retrieve_response(r, false)),
+                        .and_then(move |r| retrieve_response(r, redirect_limit - 1)),
                 ),
                 _ => Box::new(future::ok::<HttpResponse, Error>(
                     HttpResponse::InternalServerError().finish(),

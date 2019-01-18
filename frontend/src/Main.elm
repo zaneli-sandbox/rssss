@@ -1,9 +1,9 @@
 module Main exposing (Model, Msg(..), init, main, update, view)
 
 import Browser
-import Html exposing (Html, a, button, div, h1, img, input, span, text)
-import Html.Attributes exposing (disabled, href, placeholder, src, title, value)
-import Html.Events exposing (onClick, onInput)
+import Html exposing (Html, a, article, button, div, h1, img, input, main_, p, section, span, text)
+import Html.Attributes exposing (attribute, class, disabled, href, placeholder, src, title, value)
+import Html.Events exposing (onClick, onInput, onMouseOver)
 import Http
 import Json.Decode as Decode
 
@@ -15,6 +15,7 @@ import Json.Decode as Decode
 type alias Model =
     { url : String
     , items : List Item
+    , previewing : Maybe Item
     , message : Maybe String
     }
 
@@ -48,7 +49,7 @@ errDecoder =
 
 init : ( Model, Cmd Msg )
 init =
-    ( { url = "", items = [], message = Maybe.Nothing }, Cmd.none )
+    ( { url = "", items = [], previewing = Maybe.Nothing, message = Maybe.Nothing }, Cmd.none )
 
 
 
@@ -60,6 +61,8 @@ type Msg
     | InputURL String
     | GetRSS
     | GotRSS (Result Http.Error (Http.Response String))
+    | Preview Item
+    | DeletePreview
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -89,16 +92,22 @@ update msg model =
                         Http.BadStatus_ metadata body ->
                             case Decode.decodeString errDecoder body of
                                 Ok value ->
-                                    ( { model | items = [], message = Maybe.Just value.message }, Cmd.none )
+                                    ( { model | items = [], previewing = Maybe.Nothing, message = Maybe.Just value.message }, Cmd.none )
 
                                 Err _ ->
-                                    ( { model | items = [], message = Maybe.Just metadata.statusText }, Cmd.none )
+                                    ( { model | items = [], previewing = Maybe.Nothing, message = Maybe.Just metadata.statusText }, Cmd.none )
 
                         _ ->
-                            ( { model | items = [], message = Maybe.Just "unexpected status" }, Cmd.none )
+                            ( { model | items = [], previewing = Maybe.Nothing, message = Maybe.Just "unexpected status" }, Cmd.none )
 
                 Err _ ->
-                    ( { model | items = [], message = Maybe.Just "invalid response" }, Cmd.none )
+                    ( { model | items = [], previewing = Maybe.Nothing, message = Maybe.Just "invalid response" }, Cmd.none )
+
+        Preview item ->
+            ( { model | previewing = Maybe.Just item }, Cmd.none )
+
+        DeletePreview ->
+            ( { model | previewing = Maybe.Nothing }, Cmd.none )
 
 
 expectJson : (Result Http.Error (Http.Response String) -> msg) -> Http.Expect msg
@@ -130,29 +139,62 @@ buildUrl model =
 
 view : Model -> Html Msg
 view model =
-    div []
-        ([ input [ placeholder "input RSS URL", value model.url, onInput InputURL ] []
-         , button
-            [ if model.url == "" then
-                disabled True
-
-              else
-                onClick GetRSS
+    main_ []
+        [ section [ class "container" ]
+            [ inputArea model
+            , feedsArea model
+            , messageArea model
             ]
-            [ text "view RSS" ]
-         , div []
+        ]
+
+
+inputArea : Model -> Html Msg
+inputArea model =
+    div [ class "level" ]
+        [ div [ class "level-item" ] [ input [ class "input", placeholder "input RSS URL", title "input RSS URL", value model.url, onInput InputURL ] [] ]
+        , div [ class "level-right" ]
+            [ button
+                [ class "button"
+                , if model.url == "" then
+                    disabled True
+
+                  else
+                    onClick GetRSS
+                ]
+                [ text "get RSS" ]
+            ]
+        ]
+
+
+feedsArea : Model -> Html Msg
+feedsArea model =
+    div
+        [ class "columns" ]
+        [ div [ class "column" ]
             (List.map
                 (\item ->
-                    div []
-                        [ span [] [ text (Maybe.withDefault "-" item.pubDate) ]
-                        , span [ title item.description ] [ a [ href item.link ] [ text item.title ] ]
+                    div [ class "columns has-text-left" ]
+                        [ div [ class "column is-one-third" ] [ text (Maybe.withDefault "-" item.pubDate) ]
+                        , div [ class "column", onMouseOver (Preview item) ] [ a [ href item.link ] [ text item.title ] ]
                         ]
                 )
                 model.items
             )
-         ]
-            ++ (model.message |> Maybe.map (\msg -> [ div [] [ text msg ] ]) |> Maybe.withDefault [])
-        )
+        , div [ class "column" ] (model.previewing |> Maybe.map (\item -> [ div [ class "notification" ] [ previewArea item ] ]) |> Maybe.withDefault [])
+        ]
+
+
+previewArea : Item -> Html Msg
+previewArea item =
+    article [ class "message" ]
+        [ div [ class "message-header" ] [ p [] [ text item.title ], button [ class "delete", attribute "aria-label" "delete", onClick DeletePreview ] [] ]
+        , div [ class "message-body" ] [ text item.description ]
+        ]
+
+
+messageArea : Model -> Html Msg
+messageArea model =
+    div [ class "block" ] (model.message |> Maybe.map (\msg -> [ div [ class "notification is-danger" ] [ text msg ] ]) |> Maybe.withDefault [])
 
 
 

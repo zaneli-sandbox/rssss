@@ -60,7 +60,7 @@ type Msg
     = NoOp
     | InputURL String
     | GetRSS
-    | GotRSS (Result Http.Error (Http.Response String))
+    | GotRSS (Result Http.Error ( Http.Metadata, String ))
     | Preview Item
     | DeletePreview
 
@@ -75,33 +75,32 @@ update msg model =
             ( { model | url = url }, Cmd.none )
 
         GetRSS ->
-            ( model, Http.get { url = buildUrl model, expect = expectJson GotRSS } )
+            ( { model | previewing = Maybe.Nothing, message = Maybe.Nothing }, Http.get { url = buildUrl model, expect = expectJson GotRSS } )
 
         GotRSS result ->
             case result of
-                Ok res ->
-                    case res of
-                        Http.GoodStatus_ metadata body ->
-                            case Decode.decodeString (Decode.list itemDecoder) body of
-                                Ok value ->
-                                    ( { model | items = value, message = Maybe.Nothing }, Cmd.none )
+                Ok ( metadata, body ) ->
+                    if metadata.statusCode < 300 then
+                        case Decode.decodeString (Decode.list itemDecoder) body of
+                            Ok value ->
+                                ( { model | items = value }, Cmd.none )
 
-                                Err e ->
-                                    ( { model | items = [], message = e |> Decode.errorToString |> Maybe.Just }, Cmd.none )
+                            Err e ->
+                                ( { model | items = [], message = e |> Decode.errorToString |> Maybe.Just }, Cmd.none )
 
-                        Http.BadStatus_ metadata body ->
-                            case Decode.decodeString errDecoder body of
-                                Ok value ->
-                                    ( { model | items = [], previewing = Maybe.Nothing, message = Maybe.Just value.message }, Cmd.none )
+                    else if metadata.statusCode < 500 then
+                        case Decode.decodeString errDecoder body of
+                            Ok value ->
+                                ( { model | items = [], previewing = Maybe.Nothing, message = Maybe.Just value.message }, Cmd.none )
 
-                                Err _ ->
-                                    ( { model | items = [], previewing = Maybe.Nothing, message = Maybe.Just metadata.statusText }, Cmd.none )
+                            Err _ ->
+                                ( { model | items = [], previewing = Maybe.Nothing, message = Maybe.Just metadata.statusText }, Cmd.none )
 
-                        _ ->
-                            ( { model | items = [], previewing = Maybe.Nothing, message = Maybe.Just "unexpected status" }, Cmd.none )
+                    else
+                        ( { model | items = [], previewing = Maybe.Nothing, message = Maybe.Just metadata.statusText }, Cmd.none )
 
                 Err _ ->
-                    ( { model | items = [], previewing = Maybe.Nothing, message = Maybe.Just "invalid response" }, Cmd.none )
+                    ( { model | items = [], message = Maybe.Just "invalid response" }, Cmd.none )
 
         Preview item ->
             ( { model | previewing = Maybe.Just item }, Cmd.none )
@@ -110,7 +109,7 @@ update msg model =
             ( { model | previewing = Maybe.Nothing }, Cmd.none )
 
 
-expectJson : (Result Http.Error (Http.Response String) -> msg) -> Http.Expect msg
+expectJson : (Result Http.Error ( Http.Metadata, String ) -> msg) -> Http.Expect msg
 expectJson toMsg =
     Http.expectStringResponse toMsg <|
         \response ->
@@ -124,8 +123,11 @@ expectJson toMsg =
                 Http.NetworkError_ ->
                     Err Http.NetworkError
 
-                _ ->
-                    Ok response
+                Http.BadStatus_ metadata body ->
+                    Ok ( metadata, body )
+
+                Http.GoodStatus_ metadata body ->
+                    Ok ( metadata, body )
 
 
 buildUrl : Model -> String

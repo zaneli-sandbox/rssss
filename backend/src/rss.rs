@@ -2,6 +2,7 @@ use bytes::buf::IntoBuf;
 use error::Error;
 use error::ErrorKind::InvalidRssError;
 use scraper::Html;
+use std::collections::VecDeque;
 use xml::attribute::OwnedAttribute;
 use xml::name::OwnedName;
 use xml::reader::{EventReader, XmlEvent};
@@ -77,7 +78,7 @@ trait RssParser {
 
 struct RssV20 {
     results: Vec<Rss>,
-    element: (OwnedName, Vec<OwnedAttribute>),
+    elements: VecDeque<(OwnedName, Vec<OwnedAttribute>)>,
     title: String,
     link: String,
     description: String,
@@ -88,21 +89,31 @@ impl RssV20 {
     fn new() -> RssV20 {
         RssV20 {
             results: Vec::new(),
-            element: (OwnedName::local(String::new()), Vec::default()),
+            elements: VecDeque::default(),
             title: String::new(),
             link: String::new(),
             description: String::new(),
             pub_date: Option::default(),
         }
     }
+    fn is_item(name: &OwnedName) -> bool {
+        name.to_string() == "item"
+    }
 }
 
 impl RssParser for RssV20 {
     fn parse_start_element(&mut self, name: OwnedName, attrs: Vec<OwnedAttribute>) {
-        self.element = (name, attrs);
+        self.elements.push_front((name, attrs));
     }
     fn parse_content(&mut self, data: String) {
-        let (name, _) = &self.element;
+        if &self.elements.len() < &2 {
+            return;
+        }
+        let (parent, _) = &self.elements[1];
+        if !RssV20::is_item(parent) {
+            return;
+        }
+        let (name, _) = &self.elements[0];
         match (
             name.namespace.as_ref().map(|n| n.as_str()),
             name.local_name.as_str(),
@@ -120,7 +131,7 @@ impl RssParser for RssV20 {
         }
     }
     fn parse_end_element(&mut self, name: OwnedName) {
-        if name.to_string() == "item" {
+        if RssV20::is_item(&name) {
             let rss = Rss::new(
                 self.title.clone(),
                 self.description.clone(),
@@ -134,10 +145,10 @@ impl RssParser for RssV20 {
             self.description = String::new();
             self.pub_date = Option::default();
         }
-        self.element = (OwnedName::local(String::new()), Vec::default());
+        self.elements.pop_front();
     }
     fn verify_rss(&self) -> Result<(), Error> {
-        let (name, attrs) = &self.element;
+        let (name, attrs) = &self.elements[0];
         if name.local_name != "rss" {
             return Err(Error::from(InvalidRssError));
         }
@@ -150,7 +161,7 @@ impl RssParser for RssV20 {
             Some(version) => {
                 warn!("unsupported RSS version: {}", version);
                 Err(Error::from(InvalidRssError))
-            },
+            }
             None => Err(Error::from(InvalidRssError)),
         }
     }
@@ -161,27 +172,53 @@ impl RssParser for RssV20 {
 
 struct Atom {
     results: Vec<Rss>,
-    element: (OwnedName, Vec<OwnedAttribute>),
+    elements: VecDeque<(OwnedName, Vec<OwnedAttribute>)>,
     title: String,
     link: String,
     description: String,
     pub_date: Option<String>,
 }
 
+const ATOM_NS: &'static str = "http://www.w3.org/2005/Atom";
+const MEDIA_NS: &'static str = "http://search.yahoo.com/mrss/";
+
 impl Atom {
     fn new() -> Atom {
         Atom {
             results: Vec::new(),
-            element: (OwnedName::local(String::new()), Vec::default()),
+            elements: VecDeque::default(),
             title: String::new(),
             link: String::new(),
             description: String::new(),
             pub_date: Option::default(),
         }
     }
-}
 
-const ATOM_NS: &'static str = "http://www.w3.org/2005/Atom";
+    // for YouTube RSS format
+    fn is_media_description(&self) -> bool {
+        if &self.elements.len() < &3 {
+            return false;
+        }
+        let (name, _) = &self.elements[2];
+        if !Atom::is_entry(name) {
+            return false;
+        }
+        let (name, _) = &self.elements[1];
+        if !Atom::is_media_ns(name, "group") {
+            return false;
+        }
+        let (name, _) = &self.elements[0];
+        return Atom::is_media_ns(name, "description");
+    }
+
+    fn is_entry(name: &OwnedName) -> bool {
+        name.namespace.as_ref().map(|n| n.as_str()) == Some(ATOM_NS) && name.local_name == "entry"
+    }
+    fn is_media_ns(name: &OwnedName, local_name: &str) -> bool {
+        name.namespace.as_ref().map(|n| n.as_str()) == Some(MEDIA_NS)
+            && name.local_name == local_name
+    }
+}
 
 impl RssParser for Atom {
     fn parse_start_element(&mut self, name: OwnedName, attrs: Vec<OwnedAttribute>) {
@@ -198,29 +235,37 @@ impl RssParser for Atom {
                 .find(|a| a.name.to_string() == "href")
                 .map(|a| self.link = a.value.clone());
         }
-        self.element = (name, attrs);
+        self.elements.push_front((name, attrs));
     }
     fn parse_content(&mut self, data: String) {
-        let (name, _) = &self.element;
-        match (
-            name.namespace.as_ref().map(|n| n.as_str()),
-            name.local_name.as_str(),
-        ) {
-            (Some(ATOM_NS), "title") => self.title = data,
-            (Some(ATOM_NS), "content") => self.description = data,
-            (Some(ATOM_NS), "published") => self.pub_date = Some(data),
-            (Some(ATOM_NS), "updated") => {
-                if self.pub_date.is_none() {
-                    self.pub_date = Some(data);
+        if self.is_media_description() && self.description.is_empty() {
+            self.description = data;
+            return;
+        }
+        if &self.elements.len() < &2 {
+            return;
+        }
+        let (parent, _) = &self.elements[1];
+        if Atom::is_entry(parent) {
+            let (name, _) = &self.elements[0];
+            match (
+                name.namespace.as_ref().map(|n| n.as_str()),
+                name.local_name.as_str(),
+            ) {
+                (Some(ATOM_NS), "title") => self.title = data,
+                (Some(ATOM_NS), "content") => self.description = data,
+                (Some(ATOM_NS), "published") => self.pub_date = Some(data),
+                (Some(ATOM_NS), "updated") => {
+                    if self.pub_date.is_none() {
+                        self.pub_date = Some(data);
+                    }
                 }
+                _ => (),
             }
-            _ => (),
         }
     }
     fn parse_end_element(&mut self, name: OwnedName) {
-        if name.namespace.as_ref().map(|n| n.as_str()) == Some(ATOM_NS)
-            && name.local_name == "entry"
-        {
+        if Atom::is_entry(&name) {
             let rss = Rss::new(
                 self.title.clone(),
                 self.description.clone(),
@@ -234,15 +279,16 @@ impl RssParser for Atom {
             self.description = String::new();
             self.pub_date = Option::default();
         }
-        self.element = (OwnedName::local(String::new()), Vec::default());
+        self.elements.pop_front();
     }
     fn verify_rss(&self) -> Result<(), Error> {
-        let (name, _) = &self.element;
-        if name.local_name != "feed" || name.namespace.as_ref().map(|n| n.as_str()) != Some(ATOM_NS)
+        let (name, _) = &self.elements[0];
+        if name.local_name == "feed" && name.namespace.as_ref().map(|n| n.as_str()) == Some(ATOM_NS)
         {
-            return Err(Error::from(InvalidRssError));
+            Ok(())
+        } else {
+            Err(Error::from(InvalidRssError))
         }
-        Ok(())
     }
     fn get_results(&self) -> Vec<Rss> {
         self.results.clone()

@@ -12,11 +12,16 @@ import Json.Decode as Decode
 ---- MODEL ----
 
 
+type alias Flags =
+    { backendUrl : String }
+
+
 type alias Model =
     { url : String
     , items : List Item
     , previewing : Maybe Item
     , message : Maybe String
+    , flags : Flags
     }
 
 
@@ -47,9 +52,16 @@ errDecoder =
         (Decode.field "message" Decode.string)
 
 
-init : ( Model, Cmd Msg )
-init =
-    ( { url = "", items = [], previewing = Maybe.Nothing, message = Maybe.Nothing }, Cmd.none )
+init : Flags -> ( Model, Cmd Msg )
+init flags =
+    ( { url = ""
+      , items = []
+      , previewing = Maybe.Nothing
+      , message = Maybe.Nothing
+      , flags = flags
+      }
+    , Cmd.none
+    )
 
 
 
@@ -132,7 +144,7 @@ expectJson toMsg =
 
 buildUrl : Model -> String
 buildUrl model =
-    "http://localhost:8080/feed?url=" ++ model.url
+    model.flags.backendUrl ++ "/feed?url=" ++ model.url
 
 
 
@@ -203,11 +215,11 @@ messageArea model =
 ---- PROGRAM ----
 
 
-main : Program () Model Msg
+main : Program Flags Model Msg
 main =
     Browser.element
         { view = view
-        , init = \_ -> init
+        , init = init
         , update = update
         , subscriptions = always Sub.none
         }

@@ -24,6 +24,7 @@ use actix_web::{
 use futures::future;
 use futures::future::Future;
 use listenfd::ListenFd;
+use std::env;
 use std::time::Duration;
 
 #[derive(Deserialize)]
@@ -106,7 +107,12 @@ fn main() {
     server = if let Some(l) = listenfd.take_tcp_listener(0).unwrap() {
         server.listen(l)
     } else {
-        server.bind("127.0.0.1:8080").unwrap()
+        let host = env::var("RSSSS_BACKEND_HOST").unwrap_or("localhost".to_string());
+        let port = env::var("RSSSS_BACKEND_PORT")
+            .unwrap_or("8080".to_string())
+            .parse::<u32>()
+            .unwrap();
+        server.bind(format!("{}:{}", host, port)).unwrap()
     };
 
     server.run();

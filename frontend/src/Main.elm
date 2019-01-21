@@ -1,9 +1,9 @@
 module Main exposing (Model, Msg(..), init, main, update, view)
 
 import Browser
-import Html exposing (Html, a, article, button, div, h1, img, input, main_, p, section, span, text)
+import Html exposing (Attribute, Html, a, article, button, div, h1, img, input, main_, p, section, span, text)
 import Html.Attributes exposing (attribute, class, disabled, href, placeholder, src, title, value)
-import Html.Events exposing (onClick, onInput, onMouseOver)
+import Html.Events exposing (keyCode, on, onClick, onInput, onMouseOver)
 import Http
 import Json.Decode as Decode
 
@@ -147,6 +147,21 @@ buildUrl model =
     model.flags.backendUrl ++ "/feed?url=" ++ model.url
 
 
+onEnter : Msg -> Attribute Msg
+onEnter msg =
+    let
+        toMsg =
+            \code ->
+                case code of
+                    13 ->
+                        msg
+
+                    _ ->
+                        NoOp
+    in
+    on "keypress" (keyCode |> Decode.map toMsg)
+
+
 
 ---- VIEW ----
 
@@ -165,7 +180,11 @@ view model =
 inputArea : Model -> Html Msg
 inputArea model =
     div [ class "level" ]
-        [ div [ class "level-item" ] [ input [ class "input", placeholder "input RSS URL", title "input RSS URL", value model.url, onInput InputURL ] [] ]
+        [ div [ class "level-item" ]
+            [ input
+                [ class "input", placeholder "input RSS URL", title "input RSS URL", value model.url, onInput InputURL, onEnter GetRSS ]
+                []
+            ]
         , div [ class "level-right" ]
             [ button
                 [ class "button"
@@ -194,7 +213,7 @@ feedsArea model =
                 )
                 model.items
             )
-        , div [ class "column" ] (model.previewing |> Maybe.map (\item -> [ div [ class "notification" ] [ previewArea item ] ]) |> Maybe.withDefault [])
+        , div [ class "column is-half" ] (model.previewing |> Maybe.map (\item -> [ div [ class "notification" ] [ previewArea item ] ]) |> Maybe.withDefault [])
         ]
 
 

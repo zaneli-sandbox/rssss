@@ -87,32 +87,47 @@ update msg model =
             ( { model | url = url }, Cmd.none )
 
         GetRSS ->
-            ( { model | previewing = Maybe.Nothing, message = Maybe.Nothing }, Http.get { url = buildUrl model, expect = expectJson GotRSS } )
+            ( { model | previewing = Maybe.Nothing, message = Maybe.Nothing }
+            , Http.get { url = buildUrl model, expect = expectJson GotRSS }
+            )
 
         GotRSS result ->
             case result of
                 Ok ( metadata, body ) ->
-                    if metadata.statusCode < 300 then
-                        case Decode.decodeString (Decode.list itemDecoder) body of
+                    let
+                        isSuccess =
+                            metadata.statusCode >= 200 && metadata.statusCode < 300
+
+                        isClientError =
+                            metadata.statusCode >= 400 && metadata.statusCode < 500
+
+                        decodeJson decoder =
+                            Decode.decodeString decoder body
+
+                        invalidStatusModel =
+                            { model | items = [], message = Maybe.Just metadata.statusText }
+                    in
+                    if isSuccess then
+                        case decodeJson (Decode.list itemDecoder) of
                             Ok value ->
                                 ( { model | items = value }, Cmd.none )
 
                             Err e ->
                                 ( { model | items = [], message = e |> Decode.errorToString |> Maybe.Just }, Cmd.none )
 
-                    else if metadata.statusCode < 500 then
-                        case Decode.decodeString errDecoder body of
+                    else if isClientError then
+                        case decodeJson errDecoder of
                             Ok value ->
-                                ( { model | items = [], previewing = Maybe.Nothing, message = Maybe.Just value.message }, Cmd.none )
+                                ( { model | items = [], message = Maybe.Just value.message }, Cmd.none )
 
                             Err _ ->
-                                ( { model | items = [], previewing = Maybe.Nothing, message = Maybe.Just metadata.statusText }, Cmd.none )
+                                ( invalidStatusModel, Cmd.none )
 
                     else
-                        ( { model | items = [], previewing = Maybe.Nothing, message = Maybe.Just metadata.statusText }, Cmd.none )
+                        ( invalidStatusModel, Cmd.none )
 
                 Err _ ->
-                    ( { model | items = [], message = Maybe.Just "invalid response" }, Cmd.none )
+                    ( { model | items = [], message = Maybe.Just "unexpected response" }, Cmd.none )
 
         Preview item ->
             ( { model | previewing = Maybe.Just item }, Cmd.none )
@@ -179,20 +194,31 @@ view model =
 
 inputArea : Model -> Html Msg
 inputArea model =
+    let
+        emptyOr a b =
+            if model.url == "" then
+                a
+
+            else
+                b
+    in
     div [ class "level" ]
         [ div [ class "level-item" ]
             [ input
-                [ class "input", placeholder "input RSS URL", title "input RSS URL", value model.url, onInput InputURL, onEnter GetRSS ]
+                ([ class "input"
+                 , placeholder "input RSS URL"
+                 , title "input RSS URL"
+                 , value model.url
+                 , onInput InputURL
+                 ]
+                    ++ emptyOr [] [ onEnter GetRSS ]
+                )
                 []
             ]
         , div [ class "level-right" ]
             [ button
                 [ class "button"
-                , if model.url == "" then
-                    disabled True
-
-                  else
-                    onClick GetRSS
+                , emptyOr (disabled True) (onClick GetRSS)
                 ]
                 [ text "get RSS" ]
             ]

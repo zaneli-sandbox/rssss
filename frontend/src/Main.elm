@@ -72,7 +72,7 @@ type Msg
     = NoOp
     | InputURL String
     | GetRSS
-    | GotRSS (Result Http.Error ( Http.Metadata, String ))
+    | GotRSS (Result String (List Item))
     | Preview Item
     | DeletePreview
 
@@ -93,41 +93,11 @@ update msg model =
 
         GotRSS result ->
             case result of
-                Ok ( metadata, body ) ->
-                    let
-                        isSuccess =
-                            metadata.statusCode >= 200 && metadata.statusCode < 300
+                Ok value ->
+                    ( { model | items = value }, Cmd.none )
 
-                        isClientError =
-                            metadata.statusCode >= 400 && metadata.statusCode < 500
-
-                        decodeJson decoder =
-                            Decode.decodeString decoder body
-
-                        invalidStatusModel =
-                            { model | items = [], message = Just metadata.statusText }
-                    in
-                    if isSuccess then
-                        case decodeJson (Decode.list itemDecoder) of
-                            Ok value ->
-                                ( { model | items = value }, Cmd.none )
-
-                            Err e ->
-                                ( { model | items = [], message = e |> Decode.errorToString |> Just }, Cmd.none )
-
-                    else if isClientError then
-                        case decodeJson errDecoder of
-                            Ok value ->
-                                ( { model | items = [], message = Just value.message }, Cmd.none )
-
-                            Err _ ->
-                                ( invalidStatusModel, Cmd.none )
-
-                    else
-                        ( invalidStatusModel, Cmd.none )
-
-                Err _ ->
-                    ( { model | items = [], message = Just "unexpected response" }, Cmd.none )
+                Err message ->
+                    ( { model | message = Just message }, Cmd.none )
 
         Preview item ->
             ( { model | previewing = Just item }, Cmd.none )
@@ -136,25 +106,34 @@ update msg model =
             ( { model | previewing = Nothing }, Cmd.none )
 
 
-expectJson : (Result Http.Error ( Http.Metadata, String ) -> msg) -> Http.Expect msg
+expectJson : (Result String (List Item) -> msg) -> Http.Expect msg
 expectJson toMsg =
+    let
+        decodeJson decoder body onSuccess onFailure =
+            case Decode.decodeString decoder body of
+                Ok value ->
+                    onSuccess value
+
+                Err e ->
+                    onFailure e
+    in
     Http.expectStringResponse toMsg <|
-        \response ->
-            case response of
-                Http.BadUrl_ url ->
-                    Err (Http.BadUrl url)
-
-                Http.Timeout_ ->
-                    Err Http.Timeout
-
-                Http.NetworkError_ ->
-                    Err Http.NetworkError
+        \res ->
+            case res of
+                Http.GoodStatus_ _ body ->
+                    decodeJson (Decode.list itemDecoder) body Ok (\e -> Decode.errorToString e |> Err)
 
                 Http.BadStatus_ metadata body ->
-                    Ok ( metadata, body )
+                    decodeJson errDecoder body (\v -> Err v.message) (\_ -> Err metadata.statusText)
 
-                Http.GoodStatus_ metadata body ->
-                    Ok ( metadata, body )
+                Http.BadUrl_ url ->
+                    Err "bad url"
+
+                Http.Timeout_ ->
+                    Err "timeout"
+
+                Http.NetworkError_ ->
+                    Err "network error"
 
 
 buildUrl : Model -> String

@@ -56,8 +56,8 @@ init : Flags -> ( Model, Cmd Msg )
 init flags =
     ( { url = ""
       , items = []
-      , previewing = Maybe.Nothing
-      , message = Maybe.Nothing
+      , previewing = Nothing
+      , message = Nothing
       , flags = flags
       }
     , Cmd.none
@@ -87,7 +87,7 @@ update msg model =
             ( { model | url = url }, Cmd.none )
 
         GetRSS ->
-            ( { model | previewing = Maybe.Nothing, message = Maybe.Nothing }
+            ( { model | previewing = Nothing, message = Nothing }
             , Http.get { url = buildUrl model, expect = expectJson GotRSS }
             )
 
@@ -105,7 +105,7 @@ update msg model =
                             Decode.decodeString decoder body
 
                         invalidStatusModel =
-                            { model | items = [], message = Maybe.Just metadata.statusText }
+                            { model | items = [], message = Just metadata.statusText }
                     in
                     if isSuccess then
                         case decodeJson (Decode.list itemDecoder) of
@@ -113,12 +113,12 @@ update msg model =
                                 ( { model | items = value }, Cmd.none )
 
                             Err e ->
-                                ( { model | items = [], message = e |> Decode.errorToString |> Maybe.Just }, Cmd.none )
+                                ( { model | items = [], message = e |> Decode.errorToString |> Just }, Cmd.none )
 
                     else if isClientError then
                         case decodeJson errDecoder of
                             Ok value ->
-                                ( { model | items = [], message = Maybe.Just value.message }, Cmd.none )
+                                ( { model | items = [], message = Just value.message }, Cmd.none )
 
                             Err _ ->
                                 ( invalidStatusModel, Cmd.none )
@@ -127,13 +127,13 @@ update msg model =
                         ( invalidStatusModel, Cmd.none )
 
                 Err _ ->
-                    ( { model | items = [], message = Maybe.Just "unexpected response" }, Cmd.none )
+                    ( { model | items = [], message = Just "unexpected response" }, Cmd.none )
 
         Preview item ->
-            ( { model | previewing = Maybe.Just item }, Cmd.none )
+            ( { model | previewing = Just item }, Cmd.none )
 
         DeletePreview ->
-            ( { model | previewing = Maybe.Nothing }, Cmd.none )
+            ( { model | previewing = Nothing }, Cmd.none )
 
 
 expectJson : (Result Http.Error ( Http.Metadata, String ) -> msg) -> Http.Expect msg

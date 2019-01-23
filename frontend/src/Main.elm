@@ -17,7 +17,8 @@ type alias Flags =
 
 
 type alias Model =
-    { url : String
+    { inputUrl : String
+    , submittedUrl : Maybe String
     , items : List Item
     , previewing : Maybe Item
     , message : Maybe String
@@ -54,7 +55,8 @@ errDecoder =
 
 init : Flags -> ( Model, Cmd Msg )
 init flags =
-    ( { url = ""
+    ( { inputUrl = ""
+      , submittedUrl = Nothing
       , items = []
       , previewing = Nothing
       , message = Nothing
@@ -84,18 +86,18 @@ update msg model =
             ( model, Cmd.none )
 
         InputUrl url ->
-            ( { model | url = url }, Cmd.none )
+            ( { model | inputUrl = url }, Cmd.none )
 
         GetRss ->
-            ( { model | previewing = Nothing, message = Nothing }
+            ( { model | items = [], previewing = Nothing, message = Nothing }
             , Http.get { url = buildUrl model, expect = expectJson GotRss }
             )
 
         GotRss (Ok value) ->
-            ( { model | items = value }, Cmd.none )
+            ( { model | submittedUrl = Just model.inputUrl, items = value }, Cmd.none )
 
         GotRss (Err message) ->
-            ( { model | message = Just message }, Cmd.none )
+            ( { model | submittedUrl = Nothing, message = Just message }, Cmd.none )
 
         Preview item ->
             ( { model | previewing = Just item }, Cmd.none )
@@ -136,7 +138,7 @@ expectJson toMsg =
 
 buildUrl : Model -> String
 buildUrl model =
-    model.flags.backendUrl ++ "/feed?url=" ++ model.url
+    model.flags.backendUrl ++ "/feed?url=" ++ model.inputUrl
 
 
 onEnter : Msg -> Attribute Msg
@@ -172,12 +174,15 @@ view model =
 inputArea : Model -> Html Msg
 inputArea model =
     let
-        emptyOr a b =
-            if model.url == "" then
-                a
+        invalidUrls =
+            "" :: (model.submittedUrl |> Maybe.map List.singleton |> Maybe.withDefault [])
+
+        enableOr enabled disabled =
+            if List.member model.inputUrl invalidUrls then
+                disabled
 
             else
-                b
+                enabled
     in
     div [ class "level" ]
         [ div [ class "level-item" ]
@@ -185,17 +190,17 @@ inputArea model =
                 ([ class "input"
                  , placeholder "input RSS URL"
                  , title "input RSS URL"
-                 , value model.url
+                 , value model.inputUrl
                  , onInput InputUrl
                  ]
-                    ++ emptyOr [] [ onEnter GetRss ]
+                    ++ enableOr [ onEnter GetRss ] []
                 )
                 []
             ]
         , div [ class "level-right" ]
             [ button
                 [ class "button"
-                , emptyOr (disabled True) (onClick GetRss)
+                , enableOr (onClick GetRss) (disabled True)
                 ]
                 [ text "get RSS" ]
             ]

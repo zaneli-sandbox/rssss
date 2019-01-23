@@ -91,13 +91,11 @@ update msg model =
             , Http.get { url = buildUrl model, expect = expectJson GotRSS }
             )
 
-        GotRSS result ->
-            case result of
-                Ok value ->
-                    ( { model | items = value }, Cmd.none )
+        GotRSS (Ok value) ->
+            ( { model | items = value }, Cmd.none )
 
-                Err message ->
-                    ( { model | message = Just message }, Cmd.none )
+        GotRSS (Err message) ->
+            ( { model | message = Just message }, Cmd.none )
 
         Preview item ->
             ( { model | previewing = Just item }, Cmd.none )

@@ -70,9 +70,9 @@ init flags =
 
 type Msg
     = NoOp
-    | InputURL String
-    | GetRSS
-    | GotRSS (Result String (List Item))
+    | InputUrl String
+    | GetRss
+    | GotRss (Result String (List Item))
     | Preview Item
     | DeletePreview
 
@@ -83,18 +83,18 @@ update msg model =
         NoOp ->
             ( model, Cmd.none )
 
-        InputURL url ->
+        InputUrl url ->
             ( { model | url = url }, Cmd.none )
 
-        GetRSS ->
+        GetRss ->
             ( { model | previewing = Nothing, message = Nothing }
-            , Http.get { url = buildUrl model, expect = expectJson GotRSS }
+            , Http.get { url = buildUrl model, expect = expectJson GotRss }
             )
 
-        GotRSS (Ok value) ->
+        GotRss (Ok value) ->
             ( { model | items = value }, Cmd.none )
 
-        GotRSS (Err message) ->
+        GotRss (Err message) ->
             ( { model | message = Just message }, Cmd.none )
 
         Preview item ->
@@ -186,16 +186,16 @@ inputArea model =
                  , placeholder "input RSS URL"
                  , title "input RSS URL"
                  , value model.url
-                 , onInput InputURL
+                 , onInput InputUrl
                  ]
-                    ++ emptyOr [] [ onEnter GetRSS ]
+                    ++ emptyOr [] [ onEnter GetRss ]
                 )
                 []
             ]
         , div [ class "level-right" ]
             [ button
                 [ class "button"
-                , emptyOr (disabled True) (onClick GetRSS)
+                , emptyOr (disabled True) (onClick GetRss)
                 ]
                 [ text "get RSS" ]
             ]

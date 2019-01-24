@@ -10,6 +10,10 @@ a simple rss viewer
 
 ## usage
 
+* copy .env file
+```sh
+cp .env.default .env
+```
 * run backend & frontend
 ```sh
 forego start

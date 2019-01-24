@@ -6,4 +6,5 @@ frontend/elm-stuff
 frontend/repl-temp-*
 frontend/node_modules
 
+.env
 .DS_Store

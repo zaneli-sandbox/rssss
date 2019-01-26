@@ -6,6 +6,8 @@ import Html.Attributes exposing (attribute, class, disabled, href, placeholder, 
 import Html.Events exposing (keyCode, on, onClick, onInput, onMouseOver)
 import Http
 import Json.Decode as Decode
+import RemoteData
+import RemoteData exposing (RemoteData)
 
 
 
@@ -19,9 +21,8 @@ type alias Flags =
 type alias Model =
     { inputUrl : String
     , submittedUrl : Maybe String
-    , items : List Item
+    , data : RemoteData String (List Item)
     , previewing : Maybe Item
-    , message : Maybe String
     , flags : Flags
     }
 
@@ -57,9 +58,8 @@ init : Flags -> ( Model, Cmd Msg )
 init flags =
     ( { inputUrl = ""
       , submittedUrl = Nothing
-      , items = []
+      , data = RemoteData.NotAsked
       , previewing = Nothing
-      , message = Nothing
       , flags = flags
       }
     , Cmd.none
@@ -74,13 +74,21 @@ type Msg
     = NoOp
     | InputUrl String
     | GetRss
-    | GotRss (Result String (List Item))
+    | GotRss (RemoteData String (List Item))
     | Preview Item
     | DeletePreview
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
+    let
+        submittedUrl data =
+            if RemoteData.isSuccess data then
+                Just model.inputUrl
+
+            else
+                Nothing
+    in
     case msg of
         NoOp ->
             ( model, Cmd.none )
@@ -89,15 +97,12 @@ update msg model =
             ( { model | inputUrl = url }, Cmd.none )
 
         GetRss ->
-            ( { model | items = [], previewing = Nothing, message = Nothing }
-            , Http.get { url = buildUrl model, expect = expectJson GotRss }
+            ( { model | data = RemoteData.Loading, previewing = Nothing }
+            , Http.get { url = buildUrl model, expect = expectJson (RemoteData.fromResult >> GotRss) }
             )
 
-        GotRss (Ok value) ->
-            ( { model | submittedUrl = Just model.inputUrl, items = value }, Cmd.none )
-
-        GotRss (Err message) ->
-            ( { model | submittedUrl = Nothing, message = Just message }, Cmd.none )
+        GotRss data ->
+            ( { model | data = data, submittedUrl = submittedUrl data }, Cmd.none )
 
         Preview item ->
             ( { model | previewing = Just item }, Cmd.none )
@@ -178,11 +183,18 @@ inputArea model =
             "" :: (model.submittedUrl |> Maybe.map List.singleton |> Maybe.withDefault [])
 
         enableOr enabled disabled =
-            if List.member model.inputUrl invalidUrls then
+            if RemoteData.isLoading model.data || List.member model.inputUrl invalidUrls then
                 disabled
 
             else
                 enabled
+
+        buttonClass =
+            if RemoteData.isLoading model.data then
+                "button is-loading"
+
+            else
+                "button"
     in
     div [ class "level" ]
         [ div [ class "level-item" ]
@@ -199,7 +211,7 @@ inputArea model =
             ]
         , div [ class "level-right" ]
             [ button
-                [ class "button"
+                [ class buttonClass
                 , enableOr (onClick GetRss) (disabled True)
                 ]
                 [ text "get RSS" ]
@@ -219,7 +231,7 @@ feedsArea model =
                         , div [ class "column", onMouseOver (Preview item) ] [ a [ href item.link ] [ text item.title ] ]
                         ]
                 )
-                model.items
+                (RemoteData.withDefault [] model.data)
             )
         , div [ class "column is-half" ] (model.previewing |> Maybe.map (\item -> [ div [ class "notification" ] [ previewArea item ] ]) |> Maybe.withDefault [])
         ]
@@ -235,7 +247,16 @@ previewArea item =
 
 messageArea : Model -> Html Msg
 messageArea model =
-    div [ class "block" ] (model.message |> Maybe.map (\msg -> [ div [ class "notification is-danger" ] [ text msg ] ]) |> Maybe.withDefault [])
+    let
+        message =
+            case model.data of
+                RemoteData.Failure m ->
+                    [ div [ class "notification is-danger" ] [ text m ] ]
+
+                _ ->
+                    []
+    in
+    div [ class "block" ] message
 
 
 

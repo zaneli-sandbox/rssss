@@ -86,6 +86,8 @@ struct RssV20 {
 }
 
 impl RssV20 {
+    const CONTENT_NS: &'static str = "http://purl.org/rss/1.0/modules/content/";
+
     fn new() -> RssV20 {
         RssV20 {
             results: Vec::new(),
@@ -114,14 +116,11 @@ impl RssParser for RssV20 {
             return;
         }
         let (name, _) = &self.elements[0];
-        match (
-            name.namespace.as_ref().map(|n| n.as_str()),
-            name.local_name.as_str(),
-        ) {
+        match (name.namespace_ref(), name.local_name.as_str()) {
             (_, "title") => self.title = data,
             (_, "link") => self.link = data,
             (_, "description") => self.description = data,
-            (Some("http://purl.org/rss/1.0/modules/content/"), "encoded") => {
+            (Some(RssV20::CONTENT_NS), "encoded") => {
                 if self.description.is_empty() {
                     self.description = data;
                 }
@@ -179,10 +178,10 @@ struct Atom {
     pub_date: Option<String>,
 }
 
-const ATOM_NS: &'static str = "http://www.w3.org/2005/Atom";
-const MEDIA_NS: &'static str = "http://search.yahoo.com/mrss/";
-
 impl Atom {
+    const ATOM_NS: &'static str = "http://www.w3.org/2005/Atom";
+    const MEDIA_NS: &'static str = "http://search.yahoo.com/mrss/";
+
     fn new() -> Atom {
         Atom {
             results: Vec::new(),
@@ -212,23 +211,19 @@ impl Atom {
     }
 
     fn is_entry(name: &OwnedName) -> bool {
-        name.namespace.as_ref().map(|n| n.as_str()) == Some(ATOM_NS) && name.local_name == "entry"
+        name.namespace_ref() == Some(Atom::ATOM_NS) && name.local_name == "entry"
     }
     fn is_media_ns(name: &OwnedName, local_name: &str) -> bool {
-        name.namespace.as_ref().map(|n| n.as_str()) == Some(MEDIA_NS)
-            && name.local_name == local_name
+        name.namespace_ref() == Some(Atom::MEDIA_NS) && name.local_name == local_name
     }
 }
 
 impl RssParser for Atom {
     fn parse_start_element(&mut self, name: OwnedName, attrs: Vec<OwnedAttribute>) {
-        if name.namespace.as_ref().map(|n| n.as_str()) == Some(ATOM_NS)
-            && name.local_name == "link"
-            && attrs
-                .iter()
-                .find(|a| {
-                    a.name.to_string() == "rel" && a.value != "self" && a.value != "alternate"
-                }).is_none()
+        if name.namespace_ref() == Some(Atom::ATOM_NS) && name.local_name == "link" && attrs
+            .iter()
+            .find(|a| a.name.to_string() == "rel" && a.value != "self" && a.value != "alternate")
+            .is_none()
         {
             attrs
                 .iter()
@@ -248,14 +243,11 @@ impl RssParser for Atom {
         let (parent, _) = &self.elements[1];
         if Atom::is_entry(parent) {
             let (name, _) = &self.elements[0];
-            match (
-                name.namespace.as_ref().map(|n| n.as_str()),
-                name.local_name.as_str(),
-            ) {
-                (Some(ATOM_NS), "title") => self.title = data,
-                (Some(ATOM_NS), "content") => self.description = data,
-                (Some(ATOM_NS), "published") => self.pub_date = Some(data),
-                (Some(ATOM_NS), "updated") => {
+            match (name.namespace_ref(), name.local_name.as_str()) {
+                (Some(Atom::ATOM_NS), "title") => self.title = data,
+                (Some(Atom::ATOM_NS), "content") => self.description = data,
+                (Some(Atom::ATOM_NS), "published") => self.pub_date = Some(data),
+                (Some(Atom::ATOM_NS), "updated") => {
                     if self.pub_date.is_none() {
                         self.pub_date = Some(data);
                     }
@@ -283,8 +275,7 @@ impl RssParser for Atom {
     }
     fn verify_rss(&self) -> Result<(), Error> {
         let (name, _) = &self.elements[0];
-        if name.local_name == "feed" && name.namespace.as_ref().map(|n| n.as_str()) == Some(ATOM_NS)
-        {
+        if name.local_name == "feed" && name.namespace_ref() == Some(Atom::ATOM_NS) {
             Ok(())
         } else {
             Err(Error::from(InvalidRssError))

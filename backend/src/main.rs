@@ -32,7 +32,7 @@ struct Info {
 
 impl From<error::Error> for HttpResponse {
     fn from(e: error::Error) -> HttpResponse {
-        HttpResponse::BadRequest().json::<error::ResponseError>(e.into())
+        HttpResponse::BadRequest().json(e)
     }
 }
 

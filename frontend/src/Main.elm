@@ -1,12 +1,11 @@
 module Main exposing (Model, Msg(..), init, main, update, view)
 
 import Browser
-import Html exposing (Attribute, Html, a, article, button, div, h1, img, input, main_, p, section, span, text)
+import Html exposing (Attribute, Html, a, article, br, button, div, h1, img, input, main_, p, section, span, text)
 import Html.Attributes exposing (attribute, class, disabled, href, placeholder, src, title, value)
 import Html.Events exposing (keyCode, on, onClick, onInput, onMouseOver)
 import Http
 import Json.Decode as Decode
-import RemoteData
 import RemoteData exposing (RemoteData)
 
 
@@ -21,7 +20,7 @@ type alias Flags =
 type alias Model =
     { inputUrl : String
     , submittedUrl : Maybe String
-    , data : RemoteData String (List Item)
+    , data : RemoteData (List String) (List Item)
     , previewing : Maybe Item
     , flags : Flags
     }
@@ -36,7 +35,7 @@ type alias Item =
 
 
 type alias ResponseError =
-    { message : String }
+    { messages : List String }
 
 
 itemDecoder : Decode.Decoder Item
@@ -51,7 +50,7 @@ itemDecoder =
 errDecoder : Decode.Decoder ResponseError
 errDecoder =
     Decode.map ResponseError
-        (Decode.field "message" Decode.string)
+        (Decode.field "messages" (Decode.list Decode.string))
 
 
 init : Flags -> ( Model, Cmd Msg )
@@ -74,7 +73,7 @@ type Msg
     = NoOp
     | InputUrl String
     | GetRss
-    | GotRss (RemoteData String (List Item))
+    | GotRss (RemoteData (List String) (List Item))
     | Preview Item
     | DeletePreview
 
@@ -111,7 +110,7 @@ update msg model =
             ( { model | previewing = Nothing }, Cmd.none )
 
 
-expectJson : (Result String (List Item) -> msg) -> Http.Expect msg
+expectJson : (Result (List String) (List Item) -> msg) -> Http.Expect msg
 expectJson toMsg =
     let
         decodeJson decoder body onSuccess onFailure =
@@ -126,19 +125,19 @@ expectJson toMsg =
         \res ->
             case res of
                 Http.GoodStatus_ _ body ->
-                    decodeJson (Decode.list itemDecoder) body Ok (\e -> Decode.errorToString e |> Err)
+                    decodeJson (Decode.list itemDecoder) body Ok (\e -> Decode.errorToString e |> List.singleton |> Err)
 
                 Http.BadStatus_ metadata body ->
-                    decodeJson errDecoder body (\v -> Err v.message) (\_ -> Err metadata.statusText)
+                    decodeJson errDecoder body (\v -> Err v.messages) (\_ -> List.singleton metadata.statusText |> Err)
 
                 Http.BadUrl_ url ->
-                    Err "bad url"
+                    List.singleton "bad url" |> Err
 
                 Http.Timeout_ ->
-                    Err "timeout"
+                    List.singleton "timeout" |> Err
 
                 Http.NetworkError_ ->
-                    Err "network error"
+                    List.singleton "network error" |> Err
 
 
 buildUrl : Model -> String
@@ -250,8 +249,8 @@ messageArea model =
     let
         message =
             case model.data of
-                RemoteData.Failure m ->
-                    [ div [ class "notification is-danger" ] [ text m ] ]
+                RemoteData.Failure ms ->
+                    [ div [ class "notification is-danger" ] (List.concatMap (\m -> [ text m, br [] [] ]) ms) ]
 
                 _ ->
                     []

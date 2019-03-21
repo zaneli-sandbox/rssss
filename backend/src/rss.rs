@@ -24,6 +24,8 @@ impl Rss {
     const ATOM_NS: &'static str = "http://www.w3.org/2005/Atom";
     const MEDIA_NS: &'static str = "http://search.yahoo.com/mrss/";
 
+    const DESCRIPTION_LIMIT: usize = 500;
+
     fn new(title: String, description: String, link: String, pub_date: Option<String>) -> Rss {
         Rss {
             title: Rss::trim(title),
@@ -39,7 +41,21 @@ impl Rss {
         let document = Html::parse_document(data.as_ref());
         let mut texts = String::new();
         for text in document.root_element().text() {
-            texts.push_str(text)
+            if texts.len() > Rss::DESCRIPTION_LIMIT {
+                break;
+            }
+            let limit = Rss::DESCRIPTION_LIMIT - texts.len();
+            if text.len() > limit {
+                let mut end: usize = 0;
+                text.chars()
+                    .into_iter()
+                    .take(limit)
+                    .for_each(|x| end += x.len_utf8());
+                texts.push_str(&text[..end]);
+                texts.push_str("...")
+            } else {
+                texts.push_str(text)
+            }
         }
         texts
     }

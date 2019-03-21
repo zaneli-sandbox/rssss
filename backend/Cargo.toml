@@ -9,7 +9,6 @@ actix-web = { version="0.7", features=["ssl"] }
 listenfd = "0.3"
 
 futures = "0.1"
-failure = "0.1"
 bytes = "0.4"
 log = "0.4"
 simple_logger = "1.0"

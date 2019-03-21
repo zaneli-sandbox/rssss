@@ -1,6 +1,5 @@
 use bytes::buf::IntoBuf;
-use error::Error;
-use error::ErrorKind::InvalidRssError;
+use error::{Error, InvalidRssError};
 use scraper::Html;
 use std::collections::VecDeque;
 use xml::attribute::OwnedAttribute;
@@ -62,9 +61,26 @@ impl Rss {
 }
 
 pub fn parse_rss(buf: bytes::Bytes) -> Result<Vec<Rss>, Error> {
-    parse(&buf, &mut RssV20::new())
-        .or(parse(&buf, &mut Atom::new()))
-        .or(parse(&buf, &mut RssV10::new()))
+    let mut errors = Vec::new();
+    let result = parse(&buf, &mut RssV20::new());
+    if result.is_ok() {
+        return result;
+    }
+    let _ = result.map_err(|e| errors.push(e));
+
+    let result = parse(&buf, &mut Atom::new());
+    if result.is_ok() {
+        return result;
+    }
+    let _ = result.map_err(|e| errors.push(e));
+
+    let result = parse(&buf, &mut RssV10::new());
+    if result.is_ok() {
+        return result;
+    }
+    let _ = result.map_err(|e| errors.push(e));
+
+    return Err(errors.into());
 }
 
 fn parse(buf: &bytes::Bytes, parser: &mut RssParser) -> Result<Vec<Rss>, Error> {
@@ -173,7 +189,9 @@ impl RssParser for RssV20 {
     fn verify_rss(&self) -> Result<(), Error> {
         let (name, attrs) = &self.elements[0];
         if name.local_name != "rss" {
-            return Err(Error::from(InvalidRssError));
+            return Err(InvalidRssError {
+                message: format!("[RSS V2] invalid root element: {}", name.local_name),
+            }.into());
         }
         let version = attrs
             .iter()
@@ -183,9 +201,13 @@ impl RssParser for RssV20 {
             Some("2.0") => Ok(()),
             Some(version) => {
                 warn!("unsupported RSS version: {}", version);
-                Err(Error::from(InvalidRssError))
+                Err(InvalidRssError {
+                    message: format!("[RSS V2] unsupported RSS version: {}", version),
+                }.into())
             }
-            None => Err(Error::from(InvalidRssError)),
+            None => Err(InvalidRssError {
+                message: format!("[RSS V2] undefined RSS version"),
+            }.into()),
         }
     }
     fn get_results(&self) -> Vec<Rss> {
@@ -296,11 +318,17 @@ impl RssParser for Atom {
     }
     fn verify_rss(&self) -> Result<(), Error> {
         let (name, _) = &self.elements[0];
-        if name.local_name == "feed" && name.namespace_ref() == Some(Rss::ATOM_NS) {
-            Ok(())
-        } else {
-            Err(Error::from(InvalidRssError))
+        if name.local_name != "feed" {
+            return Err(InvalidRssError {
+                message: format!("[Atom] invalid root element: {}", name.local_name),
+            }.into());
         }
+        if name.namespace_ref() != Some(Rss::ATOM_NS) {
+            return Err(InvalidRssError {
+                message: format!("[Atom] invalid root namespace: {:?}", name.namespace_ref()),
+            }.into());
+        }
+        Ok(())
     }
     fn get_results(&self) -> Vec<Rss> {
         self.results.clone()
@@ -377,13 +405,20 @@ impl RssParser for RssV10 {
     }
     fn verify_rss(&self) -> Result<(), Error> {
         let (name, _) = &self.elements[0];
-        if name.local_name.eq_ignore_ascii_case("rdf")
-            && name.namespace_ref() == Some(Rss::RDF_SYNTAX_NS)
-        {
-            Ok(())
-        } else {
-            Err(Error::from(InvalidRssError))
+        if !name.local_name.eq_ignore_ascii_case("rdf") {
+            return Err(InvalidRssError {
+                message: format!("[RSS V1] invalid root element: {}", name.local_name),
+            }.into());
         }
+        if name.namespace_ref() != Some(Rss::RDF_SYNTAX_NS) {
+            return Err(InvalidRssError {
+                message: format!(
+                    "[RSS V1] invalid root namespace: {:?}",
+                    name.namespace_ref()
+                ),
+            }.into());
+        }
+        Ok(())
     }
     fn get_results(&self) -> Vec<Rss> {
         self.results.clone()

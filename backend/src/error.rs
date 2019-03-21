@@ -1,8 +1,5 @@
 use actix_web::client::SendRequestError;
 use actix_web::error::PayloadError;
-use failure::{Backtrace, Context, Fail};
-use std::fmt;
-use std::fmt::Display;
 use xml::reader::Error as XMLReaderError;
 
 #[derive(Serialize)]
@@ -10,30 +7,25 @@ pub struct ResponseError {
     message: String,
 }
 
-impl<'a> From<&'a ErrorKind> for ResponseError {
-    fn from(e: &'a ErrorKind) -> ResponseError {
-        ResponseError {
-            message: e.to_string(),
-        }
-    }
+pub struct InvalidRssError {
+    pub message: String,
 }
 
-#[derive(Fail, Debug)]
-pub enum ErrorKind {
-    #[fail(display = "xml reader error")]
-    XMLReader,
-    #[fail(display = "actix payload error")]
-    PayloadError,
-    #[fail(display = "actix client send request error")]
-    SendRequestError,
-    #[fail(display = "invalid rss error")]
-    InvalidRssError,
+#[derive(Debug)]
+pub struct Error {
+    message: String,
+}
+
+impl From<Error> for ResponseError {
+    fn from(e: Error) -> ResponseError {
+        ResponseError { message: e.message }
+    }
 }
 
 impl From<XMLReaderError> for Error {
     fn from(error: XMLReaderError) -> Error {
         Error {
-            inner: error.context(ErrorKind::XMLReader),
+            message: error.to_string(),
         }
     }
 }
@@ -41,7 +33,7 @@ impl From<XMLReaderError> for Error {
 impl From<PayloadError> for Error {
     fn from(error: PayloadError) -> Error {
         Error {
-            inner: error.context(ErrorKind::PayloadError),
+            message: error.to_string(),
         }
     }
 }
@@ -49,54 +41,25 @@ impl From<PayloadError> for Error {
 impl From<SendRequestError> for Error {
     fn from(error: SendRequestError) -> Error {
         Error {
-            inner: error.context(ErrorKind::SendRequestError),
+            message: error.to_string(),
         }
     }
 }
 
-/* ----------- failure boilerplate ----------- */
-
-#[derive(Debug)]
-pub struct Error {
-    inner: Context<ErrorKind>,
-}
-
-impl Fail for Error {
-    fn cause(&self) -> Option<&Fail> {
-        self.inner.cause()
-    }
-
-    fn backtrace(&self) -> Option<&Backtrace> {
-        self.inner.backtrace()
-    }
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        Display::fmt(&self.inner, f)
-    }
-}
-
-impl Error {
-    pub fn new(inner: Context<ErrorKind>) -> Error {
-        Error { inner }
-    }
-
-    pub fn kind(&self) -> &ErrorKind {
-        self.inner.get_context()
-    }
-}
-
-impl From<ErrorKind> for Error {
-    fn from(kind: ErrorKind) -> Error {
+impl From<InvalidRssError> for Error {
+    fn from(error: InvalidRssError) -> Error {
         Error {
-            inner: Context::new(kind),
+            message: error.message,
         }
     }
 }
 
-impl From<Context<ErrorKind>> for Error {
-    fn from(inner: Context<ErrorKind>) -> Error {
-        Error { inner }
+impl From<Vec<Error>> for Error {
+    fn from(errors: Vec<Error>) -> Error {
+        let mut messages = String::new();
+        for error in errors {
+            messages.push_str(error.message.as_ref());
+        }
+        Error { message: messages }
     }
 }

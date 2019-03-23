@@ -94,9 +94,6 @@ fn main() {
     let mut server = server::new(|| {
         App::new().configure(|app| {
             Cors::for_app(app)
-                .send_wildcard()
-                .allowed_methods(vec!["GET", "POST"])
-                .allowed_header(http::header::CONTENT_TYPE)
                 .resource("/feed", |r| r.method(http::Method::GET).with(get_feed))
                 .register()
         })

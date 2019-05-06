@@ -1,6 +1,8 @@
 use crate::error::{Error, InvalidRssError};
 use bytes::buf::IntoBuf;
+use log::warn;
 use scraper::Html;
+use serde_derive::Serialize;
 use std::collections::VecDeque;
 use xml::attribute::OwnedAttribute;
 use xml::name::OwnedName;

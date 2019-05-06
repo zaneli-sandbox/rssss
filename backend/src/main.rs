@@ -1,16 +1,3 @@
-#[macro_use]
-extern crate log;
-#[macro_use]
-extern crate serde_derive;
-
-extern crate actix_web;
-extern crate bytes;
-extern crate futures;
-extern crate listenfd;
-extern crate scraper;
-extern crate simple_logger;
-extern crate xml;
-
 pub mod error;
 pub mod rss;
 
@@ -22,6 +9,8 @@ use actix_web::{
 use futures::future;
 use futures::future::Future;
 use listenfd::ListenFd;
+use log::info;
+use serde_derive::Deserialize;
 use std::env;
 use std::time::Duration;
 

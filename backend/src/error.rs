@@ -1,5 +1,6 @@
 use actix_web::client::SendRequestError;
 use actix_web::error::PayloadError;
+use serde_derive::Serialize;
 use xml::reader::Error as XMLReaderError;
 
 pub struct InvalidRssError {

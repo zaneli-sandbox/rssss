@@ -91,6 +91,14 @@ fn parse(buf: &bytes::Bytes, parser: &mut RssParser) -> Result<Vec<Rss>, Error> 
     let mut root = true;
     for elem in reader {
         match elem? {
+            XmlEvent::StartDocument { encoding, .. } => {
+                if encoding.to_uppercase() != "UTF-8" {
+                    return Err(InvalidRssError {
+                        message: format!("[{}] unsupported encoding: {}", parser.name(), encoding),
+                    }
+                    .into());
+                }
+            }
             XmlEvent::StartElement {
                 name, attributes, ..
             } => {
@@ -113,6 +121,7 @@ fn parse(buf: &bytes::Bytes, parser: &mut RssParser) -> Result<Vec<Rss>, Error> 
 }
 
 trait RssParser {
+    fn name(&self) -> &str;
     fn parse_start_element(&mut self, _: OwnedName, _: Vec<OwnedAttribute>);
     fn parse_content(&mut self, _: String);
     fn parse_end_element(&mut self, _: OwnedName);
@@ -146,6 +155,9 @@ impl RssV20 {
 }
 
 impl RssParser for RssV20 {
+    fn name(&self) -> &str {
+        return "RSS V2";
+    }
     fn parse_start_element(&mut self, name: OwnedName, attrs: Vec<OwnedAttribute>) {
         self.elements.push_front((name, attrs));
     }
@@ -192,7 +204,11 @@ impl RssParser for RssV20 {
         let (name, attrs) = &self.elements[0];
         if name.local_name != "rss" {
             return Err(InvalidRssError {
-                message: format!("[RSS V2] invalid root element: {}", name.local_name),
+                message: format!(
+                    "[{}] invalid root element: {}",
+                    self.name(),
+                    name.local_name
+                ),
             }
             .into());
         }
@@ -205,12 +221,12 @@ impl RssParser for RssV20 {
             Some(version) => {
                 warn!("unsupported RSS version: {}", version);
                 Err(InvalidRssError {
-                    message: format!("[RSS V2] unsupported RSS version: {}", version),
+                    message: format!("[{}] unsupported RSS version: {}", self.name(), version),
                 }
                 .into())
             }
             None => Err(InvalidRssError {
-                message: format!("[RSS V2] undefined RSS version"),
+                message: format!("[{}] undefined RSS version", self.name()),
             }
             .into()),
         }
@@ -267,6 +283,9 @@ impl Atom {
 }
 
 impl RssParser for Atom {
+    fn name(&self) -> &str {
+        return "Atom";
+    }
     fn parse_start_element(&mut self, name: OwnedName, attrs: Vec<OwnedAttribute>) {
         if name.namespace_ref() == Some(Rss::ATOM_NS)
             && name.local_name == "link"
@@ -329,13 +348,21 @@ impl RssParser for Atom {
         let (name, _) = &self.elements[0];
         if name.local_name != "feed" {
             return Err(InvalidRssError {
-                message: format!("[Atom] invalid root element: {}", name.local_name),
+                message: format!(
+                    "[{}] invalid root element: {}",
+                    self.name(),
+                    name.local_name
+                ),
             }
             .into());
         }
         if name.namespace_ref() != Some(Rss::ATOM_NS) {
             return Err(InvalidRssError {
-                message: format!("[Atom] invalid root namespace: {:?}", name.namespace_ref()),
+                message: format!(
+                    "[{}] invalid root namespace: {:?}",
+                    self.name(),
+                    name.namespace_ref()
+                ),
             }
             .into());
         }
@@ -372,6 +399,9 @@ impl RssV10 {
 }
 
 impl RssParser for RssV10 {
+    fn name(&self) -> &str {
+        return "RSS V1";
+    }
     fn parse_start_element(&mut self, name: OwnedName, attrs: Vec<OwnedAttribute>) {
         self.elements.push_front((name, attrs));
     }
@@ -418,14 +448,19 @@ impl RssParser for RssV10 {
         let (name, _) = &self.elements[0];
         if !name.local_name.eq_ignore_ascii_case("rdf") {
             return Err(InvalidRssError {
-                message: format!("[RSS V1] invalid root element: {}", name.local_name),
+                message: format!(
+                    "[{}] invalid root element: {}",
+                    self.name(),
+                    name.local_name
+                ),
             }
             .into());
         }
         if name.namespace_ref() != Some(Rss::RDF_SYNTAX_NS) {
             return Err(InvalidRssError {
                 message: format!(
-                    "[RSS V1] invalid root namespace: {:?}",
+                    "[{}] invalid root namespace: {:?}",
+                    self.name(),
                     name.namespace_ref()
                 ),
             }

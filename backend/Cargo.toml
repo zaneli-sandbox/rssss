@@ -2,6 +2,7 @@
 name = "rssss"
 version = "0.1.0"
 authors = ["zaneli <shun.otani@gmail.com>"]
+edition = "2018"
 
 [dependencies]
 actix = "0.7"

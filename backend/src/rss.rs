@@ -1,5 +1,5 @@
+use crate::error::{Error, InvalidRssError};
 use bytes::buf::IntoBuf;
-use error::{Error, InvalidRssError};
 use scraper::Html;
 use std::collections::VecDeque;
 use xml::attribute::OwnedAttribute;
@@ -111,9 +111,9 @@ fn parse(buf: &bytes::Bytes, parser: &mut RssParser) -> Result<Vec<Rss>, Error> 
 }
 
 trait RssParser {
-    fn parse_start_element(&mut self, OwnedName, Vec<OwnedAttribute>);
-    fn parse_content(&mut self, String);
-    fn parse_end_element(&mut self, OwnedName);
+    fn parse_start_element(&mut self, _: OwnedName, _: Vec<OwnedAttribute>);
+    fn parse_content(&mut self, _: String);
+    fn parse_end_element(&mut self, _: OwnedName);
     fn verify_rss(&self) -> Result<(), Error>;
     fn get_results(&self) -> Vec<Rss>;
 }
@@ -191,7 +191,8 @@ impl RssParser for RssV20 {
         if name.local_name != "rss" {
             return Err(InvalidRssError {
                 message: format!("[RSS V2] invalid root element: {}", name.local_name),
-            }.into());
+            }
+            .into());
         }
         let version = attrs
             .iter()
@@ -203,11 +204,13 @@ impl RssParser for RssV20 {
                 warn!("unsupported RSS version: {}", version);
                 Err(InvalidRssError {
                     message: format!("[RSS V2] unsupported RSS version: {}", version),
-                }.into())
+                }
+                .into())
             }
             None => Err(InvalidRssError {
                 message: format!("[RSS V2] undefined RSS version"),
-            }.into()),
+            }
+            .into()),
         }
     }
     fn get_results(&self) -> Vec<Rss> {
@@ -263,10 +266,14 @@ impl Atom {
 
 impl RssParser for Atom {
     fn parse_start_element(&mut self, name: OwnedName, attrs: Vec<OwnedAttribute>) {
-        if name.namespace_ref() == Some(Rss::ATOM_NS) && name.local_name == "link" && attrs
-            .iter()
-            .find(|a| a.name.to_string() == "rel" && a.value != "self" && a.value != "alternate")
-            .is_none()
+        if name.namespace_ref() == Some(Rss::ATOM_NS)
+            && name.local_name == "link"
+            && attrs
+                .iter()
+                .find(|a| {
+                    a.name.to_string() == "rel" && a.value != "self" && a.value != "alternate"
+                })
+                .is_none()
         {
             attrs
                 .iter()
@@ -321,12 +328,14 @@ impl RssParser for Atom {
         if name.local_name != "feed" {
             return Err(InvalidRssError {
                 message: format!("[Atom] invalid root element: {}", name.local_name),
-            }.into());
+            }
+            .into());
         }
         if name.namespace_ref() != Some(Rss::ATOM_NS) {
             return Err(InvalidRssError {
                 message: format!("[Atom] invalid root namespace: {:?}", name.namespace_ref()),
-            }.into());
+            }
+            .into());
         }
         Ok(())
     }
@@ -408,7 +417,8 @@ impl RssParser for RssV10 {
         if !name.local_name.eq_ignore_ascii_case("rdf") {
             return Err(InvalidRssError {
                 message: format!("[RSS V1] invalid root element: {}", name.local_name),
-            }.into());
+            }
+            .into());
         }
         if name.namespace_ref() != Some(Rss::RDF_SYNTAX_NS) {
             return Err(InvalidRssError {
@@ -416,7 +426,8 @@ impl RssParser for RssV10 {
                     "[RSS V1] invalid root namespace: {:?}",
                     name.namespace_ref()
                 ),
-            }.into());
+            }
+            .into());
         }
         Ok(())
     }

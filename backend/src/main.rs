@@ -1,23 +1,18 @@
 pub mod error;
 pub mod rss;
 
-use actix_web::client::{ClientResponse, SendRequest};
+use actix_web::client::{Client, ClientResponse, SendRequestError};
+use actix_web::error::PayloadError;
 use actix_web::middleware::cors::Cors;
-use actix_web::{
-    client, http, server, App, AsyncResponder, Error, HttpMessage, HttpResponse, Query,
-};
+use actix_web::{web, App, Error, HttpRequest, HttpResponse, HttpServer};
+use bytes::Bytes;
 use futures::future;
-use futures::future::Future;
+use futures::{Future, Stream};
 use listenfd::ListenFd;
 use log::info;
-use serde_derive::Deserialize;
+use regex::Regex;
 use std::env;
 use std::time::Duration;
-
-#[derive(Deserialize)]
-struct Info {
-    url: String,
-}
 
 impl From<error::Error> for HttpResponse {
     fn from(e: error::Error) -> HttpResponse {
@@ -25,25 +20,31 @@ impl From<error::Error> for HttpResponse {
     }
 }
 
-fn get_feed(info: Query<Info>) -> Box<Future<Item = HttpResponse, Error = Error>> {
-    send_request(&info.url)
+fn get_feed(req: HttpRequest) -> impl Future<Item = HttpResponse, Error = Error> {
+    let reg = Regex::new(r"\&?url=(.+)\&?").unwrap();
+    let url = reg.captures(req.query_string()).unwrap();
+    send_request(&url[1])
         .map_err(Error::from)
         .and_then(|r| retrieve_response(r, 3))
-        .responder()
 }
 
-fn send_request(url: &String) -> SendRequest {
+fn send_request(
+    url: &str,
+) -> impl Future<
+    Item = ClientResponse<impl Stream<Item = Bytes, Error = PayloadError>>,
+    Error = SendRequestError,
+> {
     info!("{}", url);
-    client::get(url)
+    let client = Client::default();
+    client
+        .get(url)
         .header("User-Agent", "rssss")
         .timeout(Duration::from_secs(60))
-        .finish()
-        .unwrap()
         .send()
 }
 
 fn retrieve_response(
-    res: ClientResponse,
+    mut res: ClientResponse<impl Stream<Item = Bytes, Error = PayloadError> + 'static>,
     redirect_limit: u8,
 ) -> Box<Future<Item = HttpResponse, Error = Error>> {
     let status = res.status();
@@ -80,16 +81,14 @@ fn main() {
 
     let mut listenfd = ListenFd::from_env();
 
-    let mut server = server::new(|| {
-        App::new().configure(|app| {
-            Cors::for_app(app)
-                .resource("/feed", |r| r.method(http::Method::GET).with(get_feed))
-                .register()
-        })
+    let mut server = HttpServer::new(|| {
+        App::new()
+            .wrap(Cors::new())
+            .service(web::resource("/feed").route(web::get().to_async(get_feed)))
     });
 
     server = if let Some(l) = listenfd.take_tcp_listener(0).unwrap() {
-        server.listen(l)
+        server.listen(l).unwrap()
     } else {
         let host = env::var("RSSSS_BACKEND_HOST").unwrap_or("localhost".to_string());
         let port = env::var("RSSSS_BACKEND_PORT")
@@ -99,5 +98,5 @@ fn main() {
         server.bind(format!("{}:{}", host, port)).unwrap()
     };
 
-    server.run();
+    server.run().unwrap();
 }

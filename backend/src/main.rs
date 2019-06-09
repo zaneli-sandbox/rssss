@@ -13,6 +13,7 @@ use listenfd::ListenFd;
 use log::info;
 use std::collections::HashMap;
 use std::env;
+use std::io;
 use std::time::Duration;
 
 impl From<error::Error> for HttpResponse {
@@ -70,12 +71,18 @@ fn test_get_query() {
     );
 }
 
-fn get_feed(req: HttpRequest) -> impl Future<Item = HttpResponse, Error = Error> {
+fn get_feed(req: HttpRequest) -> Box<Future<Item = HttpResponse, Error = Error>> {
     let query = get_query(req.uri());
-    let url = query.get("url").unwrap();
-    send_request(url[0])
-        .map_err(Error::from)
-        .and_then(|r| retrieve_response(r, 3))
+    match query.get("url") {
+        Some(url) => Box::new(
+            send_request(url[0])
+                .map_err(Error::from)
+                .and_then(|r| retrieve_response(r, 3)),
+        ),
+        _ => Box::new(future::ok::<HttpResponse, Error>(
+            HttpResponse::BadRequest().body("url param is required"),
+        )),
+    }
 }
 
 fn send_request(
@@ -126,8 +133,9 @@ fn retrieve_response(
     }
 }
 
-fn main() {
-    simple_logger::init_with_level(log::Level::Info).unwrap();
+fn init() -> io::Result<()> {
+    simple_logger::init_with_level(log::Level::Info)
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
     let mut listenfd = ListenFd::from_env();
 
@@ -137,16 +145,22 @@ fn main() {
             .service(web::resource("/feed").route(web::get().to_async(get_feed)))
     });
 
-    server = if let Some(l) = listenfd.take_tcp_listener(0).unwrap() {
-        server.listen(l).unwrap()
+    server = if let Some(l) = listenfd.take_tcp_listener(0)? {
+        server.listen(l)?
     } else {
         let host = env::var("RSSSS_BACKEND_HOST").unwrap_or("localhost".to_string());
         let port = env::var("RSSSS_BACKEND_PORT")
             .unwrap_or("8080".to_string())
             .parse::<u32>()
-            .unwrap();
-        server.bind(format!("{}:{}", host, port)).unwrap()
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+        server.bind(format!("{}:{}", host, port))?
     };
 
-    server.run().unwrap();
+    server.run()?;
+
+    Ok(())
+}
+
+fn main() {
+    init().unwrap();
 }

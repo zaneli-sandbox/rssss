@@ -1,6 +1,7 @@
 pub mod error;
 pub mod rss;
 
+use actix_http::http::Uri;
 use actix_web::client::{Client, ClientResponse, SendRequestError};
 use actix_web::error::PayloadError;
 use actix_web::middleware::cors::Cors;
@@ -10,7 +11,7 @@ use futures::future;
 use futures::{Future, Stream};
 use listenfd::ListenFd;
 use log::info;
-use regex::Regex;
+use std::collections::HashMap;
 use std::env;
 use std::time::Duration;
 
@@ -20,10 +21,59 @@ impl From<error::Error> for HttpResponse {
     }
 }
 
+fn get_query(uri: &Uri) -> HashMap<&str, Vec<&str>> {
+    uri.query().map_or(HashMap::default(), |params| {
+        let mut map: HashMap<&str, Vec<&str>> = HashMap::new();
+        for param in params.split("&") {
+            let kv: Vec<&str> = param.splitn(2, "=").collect();
+            match map.remove(kv[0]) {
+                Some(mut vs) => {
+                    vs.push(kv[1]);
+                    map.insert(kv[0], vs.to_vec())
+                }
+                _ => map.insert(kv[0], vec![kv[1]]),
+            };
+        }
+        map
+    })
+}
+
+#[test]
+fn test_get_query() {
+    let uri = "https://www.example.com/".parse().unwrap();
+    assert_eq!(get_query(&uri), HashMap::default());
+
+    let uri = "https://www.example.com/?aaa=bbb".parse().unwrap();
+    assert_eq!(
+        get_query(&uri),
+        [("aaa", vec!["bbb"])].iter().cloned().collect()
+    );
+
+    let uri = "https://www.example.com/?aaa=bbb&xxx=yyy".parse().unwrap();
+    assert_eq!(
+        get_query(&uri),
+        [("aaa", vec!["bbb"]), ("xxx", vec!["yyy"])]
+            .iter()
+            .cloned()
+            .collect()
+    );
+
+    let uri = "https://www.example.com/?aaa=bbb&xxx=yyy&aaa=ccc"
+        .parse()
+        .unwrap();
+    assert_eq!(
+        get_query(&uri),
+        [("aaa", vec!["bbb", "ccc"]), ("xxx", vec!["yyy"])]
+            .iter()
+            .cloned()
+            .collect()
+    );
+}
+
 fn get_feed(req: HttpRequest) -> impl Future<Item = HttpResponse, Error = Error> {
-    let reg = Regex::new(r"\&?url=(.+)\&?").unwrap();
-    let url = reg.captures(req.query_string()).unwrap();
-    send_request(&url[1])
+    let query = get_query(req.uri());
+    let url = query.get("url").unwrap();
+    send_request(url[0])
         .map_err(Error::from)
         .and_then(|r| retrieve_response(r, 3))
 }

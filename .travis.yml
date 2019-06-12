@@ -1,0 +1,15 @@
+matrix:
+  include:
+    - language: rust
+      install:
+        # https://docs.rs/openssl/0.10.16/src/openssl/ssl/mod.rs.html#2506
+        - curl https://www.openssl.org/source/openssl-1.0.2l.tar.gz | tar xz
+        - sudo apt-get remove openssl
+        - cd openssl-1.0.2l && ./config --prefix=/usr && make && sudo make install && ls -la && cd ../
+        - openssl version
+      before_script:
+        - cd backend/
+
+    - language: elm
+      before_script:
+        - cd frontend/

@@ -1,4 +1,4 @@
-# rssss
+# rssss [![Build Status](https://travis-ci.org/zaneli-sandbox/rssss.svg?branch=master)](https://travis-ci.org/zaneli-sandbox/rssss)
 
 a simple rss viewer
 

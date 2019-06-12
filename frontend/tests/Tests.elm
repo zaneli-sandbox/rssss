@@ -1,22 +1,19 @@
-module Tests exposing (..)
+module Tests exposing (suite)
 
-import Test exposing (..)
-import Expect
+import Expect exposing (Expectation)
+import Fuzz exposing (Fuzzer, int, list, string)
+import Main
+import Test exposing (Test, describe, test)
 
 
--- Check out http://package.elm-lang.org/packages/elm-community/elm-test/latest to learn more about testing in Elm!
-
-
-all : Test
-all =
-    describe "A Test Suite"
-        [ test "Addition" <|
-            \_ ->
-                Expect.equal 10 (3 + 7)
-        , test "String.left" <|
-            \_ ->
-                Expect.equal "a" (String.left 1 "abcdefg")
-        , test "This test should fail" <|
-            \_ ->
-                Expect.fail "failed as expected!"
+suite : Test
+suite =
+    describe "backend url"
+        [ test "should equal" <|
+            \() ->
+                let
+                    ( initialValue, _ ) =
+                        Main.init { backendUrl = "https://example.com/" }
+                in
+                Expect.equal initialValue.flags.backendUrl "https://example.com/"
         ]

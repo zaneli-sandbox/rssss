@@ -1,23 +1,24 @@
 pub mod error;
 pub mod rss;
 
+use crate::error::InvalidRequestError;
 use actix_http::http::Uri;
 use actix_web::client::{Client, ClientResponse, SendRequestError};
 use actix_web::error::PayloadError;
 use actix_web::middleware::cors::Cors;
 use actix_web::{web, App, Error, HttpRequest, HttpResponse, HttpServer};
 use bytes::Bytes;
-use futures::future;
-use futures::{Future, Stream};
+use futures::{future, Future, Stream};
 use listenfd::ListenFd;
 use log::info;
+use serde::Serialize;
 use std::collections::HashMap;
 use std::env;
 use std::io;
 use std::time::Duration;
 
-impl From<error::Error> for HttpResponse {
-    fn from(e: error::Error) -> HttpResponse {
+impl<T: Serialize> From<error::Error<T>> for HttpResponse {
+    fn from(e: error::Error<T>) -> HttpResponse {
         HttpResponse::BadRequest().json(e)
     }
 }
@@ -79,9 +80,13 @@ fn get_feed(req: HttpRequest) -> Box<Future<Item = HttpResponse, Error = Error>>
                 .map_err(Error::from)
                 .and_then(|r| retrieve_response(r, 3)),
         ),
-        _ => Box::new(future::ok::<HttpResponse, Error>(
-            HttpResponse::BadRequest().body("url param is required"),
-        )),
+        _ => {
+            let e: error::Error<HashMap<&'static str, String>> = InvalidRequestError {
+                messages: vec![("url", "not found")],
+            }
+            .into();
+            Box::new(future::ok::<HttpResponse, Error>(e.into()))
+        }
     }
 }
 
@@ -118,7 +123,7 @@ fn retrieve_response(
     } else if status.is_redirection() && redirect_limit > 0 {
         match res.headers().get("location").and_then(|l| l.to_str().ok()) {
             Some(url) => Box::new(
-                send_request(&url.to_string())
+                send_request(url)
                     .map_err(Error::from)
                     .and_then(move |r| retrieve_response(r, redirect_limit - 1)),
             ),
@@ -133,7 +138,7 @@ fn retrieve_response(
     }
 }
 
-fn init() -> io::Result<()> {
+fn main() -> io::Result<()> {
     simple_logger::init_with_level(log::Level::Info)
         .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
@@ -159,8 +164,4 @@ fn init() -> io::Result<()> {
     server.run()?;
 
     Ok(())
-}
-
-fn main() {
-    init().unwrap();
 }

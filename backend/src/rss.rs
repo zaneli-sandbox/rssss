@@ -62,7 +62,7 @@ impl Rss {
     }
 }
 
-pub fn parse_rss(buf: bytes::Bytes) -> Result<Vec<Rss>, Error> {
+pub fn parse_rss(buf: bytes::Bytes) -> Result<Vec<Rss>, Error<String>> {
     let mut errors = Vec::new();
     let result = parse(&buf, &mut RssV20::new());
     if result.is_ok() {
@@ -85,7 +85,7 @@ pub fn parse_rss(buf: bytes::Bytes) -> Result<Vec<Rss>, Error> {
     return Err(errors.into());
 }
 
-fn parse(buf: &bytes::Bytes, parser: &mut RssParser) -> Result<Vec<Rss>, Error> {
+fn parse(buf: &bytes::Bytes, parser: &mut RssParser) -> Result<Vec<Rss>, Error<String>> {
     let reader = EventReader::new(buf.into_buf());
 
     let mut root = true;
@@ -125,7 +125,7 @@ trait RssParser {
     fn parse_start_element(&mut self, _: OwnedName, _: Vec<OwnedAttribute>);
     fn parse_content(&mut self, _: String);
     fn parse_end_element(&mut self, _: OwnedName);
-    fn verify_rss(&self) -> Result<(), Error>;
+    fn verify_rss(&self) -> Result<(), Error<String>>;
     fn get_results(&self) -> Vec<Rss>;
 }
 
@@ -200,7 +200,7 @@ impl RssParser for RssV20 {
         }
         self.elements.pop_front();
     }
-    fn verify_rss(&self) -> Result<(), Error> {
+    fn verify_rss(&self) -> Result<(), Error<String>> {
         let (name, attrs) = &self.elements[0];
         if name.local_name != "rss" {
             return Err(InvalidRssError {
@@ -344,7 +344,7 @@ impl RssParser for Atom {
         }
         self.elements.pop_front();
     }
-    fn verify_rss(&self) -> Result<(), Error> {
+    fn verify_rss(&self) -> Result<(), Error<String>> {
         let (name, _) = &self.elements[0];
         if name.local_name != "feed" {
             return Err(InvalidRssError {
@@ -444,7 +444,7 @@ impl RssParser for RssV10 {
         }
         self.elements.pop_front();
     }
-    fn verify_rss(&self) -> Result<(), Error> {
+    fn verify_rss(&self) -> Result<(), Error<String>> {
         let (name, _) = &self.elements[0];
         if !name.local_name.eq_ignore_ascii_case("rdf") {
             return Err(InvalidRssError {

@@ -1,6 +1,8 @@
 matrix:
   include:
     - language: rust
+      rust:
+        - stable
       install:
         # https://docs.rs/openssl/0.10.16/src/openssl/ssl/mod.rs.html#2506
         - curl https://www.openssl.org/source/openssl-1.0.2l.tar.gz | tar xz
@@ -11,5 +13,7 @@ matrix:
         - cd backend/
 
     - language: elm
+      elm:
+        - 0.19.0
       before_script:
         - cd frontend/

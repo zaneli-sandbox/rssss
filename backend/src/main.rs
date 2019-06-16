@@ -1,21 +1,25 @@
 pub mod error;
 pub mod rss;
 
-use crate::error::InvalidRequestError;
-use actix_http::http::Uri;
 use actix_web::client::{Client, ClientResponse, SendRequestError};
 use actix_web::error::PayloadError;
 use actix_web::middleware::cors::Cors;
-use actix_web::{web, App, Error, HttpRequest, HttpResponse, HttpServer};
+use actix_web::web::Query;
+use actix_web::{web, App, Error, HttpResponse, HttpServer};
 use bytes::Bytes;
 use futures::{future, Future, Stream};
 use listenfd::ListenFd;
 use log::info;
 use serde::Serialize;
-use std::collections::HashMap;
+use serde_derive::Deserialize;
 use std::env;
 use std::io;
 use std::time::Duration;
+
+#[derive(Deserialize)]
+struct Info {
+    url: String,
+}
 
 impl<T: Serialize> From<error::Error<T>> for HttpResponse {
     fn from(e: error::Error<T>) -> HttpResponse {
@@ -23,71 +27,10 @@ impl<T: Serialize> From<error::Error<T>> for HttpResponse {
     }
 }
 
-fn get_query(uri: &Uri) -> HashMap<&str, Vec<&str>> {
-    uri.query().map_or(HashMap::default(), |params| {
-        let mut map: HashMap<&str, Vec<&str>> = HashMap::new();
-        for param in params.split("&") {
-            let kv: Vec<&str> = param.splitn(2, "=").collect();
-            match map.remove(kv[0]) {
-                Some(mut vs) => {
-                    vs.push(kv[1]);
-                    map.insert(kv[0], vs.to_vec())
-                }
-                _ => map.insert(kv[0], vec![kv[1]]),
-            };
-        }
-        map
-    })
-}
-
-#[test]
-fn test_get_query() {
-    let uri = "https://www.example.com/".parse().unwrap();
-    assert_eq!(get_query(&uri), HashMap::default());
-
-    let uri = "https://www.example.com/?aaa=bbb".parse().unwrap();
-    assert_eq!(
-        get_query(&uri),
-        [("aaa", vec!["bbb"])].iter().cloned().collect()
-    );
-
-    let uri = "https://www.example.com/?aaa=bbb&xxx=yyy".parse().unwrap();
-    assert_eq!(
-        get_query(&uri),
-        [("aaa", vec!["bbb"]), ("xxx", vec!["yyy"])]
-            .iter()
-            .cloned()
-            .collect()
-    );
-
-    let uri = "https://www.example.com/?aaa=bbb&xxx=yyy&aaa=ccc"
-        .parse()
-        .unwrap();
-    assert_eq!(
-        get_query(&uri),
-        [("aaa", vec!["bbb", "ccc"]), ("xxx", vec!["yyy"])]
-            .iter()
-            .cloned()
-            .collect()
-    );
-}
-
-fn get_feed(req: HttpRequest) -> Box<Future<Item = HttpResponse, Error = Error>> {
-    let query = get_query(req.uri());
-    match query.get("url") {
-        Some(url) => Box::new(
-            send_request(url[0])
-                .map_err(Error::from)
-                .and_then(|r| retrieve_response(r, 3)),
-        ),
-        _ => {
-            let e: error::Error<HashMap<&'static str, String>> = InvalidRequestError {
-                messages: vec![("url", "not found")],
-            }
-            .into();
-            Box::new(future::ok::<HttpResponse, Error>(e.into()))
-        }
-    }
+fn get_feed(info: Query<Info>) -> impl Future<Item = HttpResponse, Error = Error> {
+    send_request(&info.url)
+        .map_err(Error::from)
+        .and_then(|r| retrieve_response(r, 3))
 }
 
 fn send_request(

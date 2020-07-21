@@ -1,13 +1,11 @@
 pub mod error;
 pub mod rss;
 
-use actix_web::client::{Client, ClientResponse, SendRequestError};
-use actix_web::error::PayloadError;
-use actix_web::middleware::cors::Cors;
+use actix_cors::Cors;
+use actix_web::client::Client;
 use actix_web::web::Query;
 use actix_web::{web, App, Error, HttpResponse, HttpServer};
-use bytes::Bytes;
-use futures::{future, Future, Stream};
+use awc::SendClientRequest;
 use listenfd::ListenFd;
 use log::info;
 use serde::Serialize;
@@ -27,18 +25,11 @@ impl<T: Serialize> From<error::Error<T>> for HttpResponse {
     }
 }
 
-fn get_feed(info: Query<Info>) -> impl Future<Item = HttpResponse, Error = Error> {
-    send_request(&info.url)
-        .map_err(Error::from)
-        .and_then(|r| retrieve_response(r, 3))
+async fn get_feed(info: Query<Info>) -> Result<HttpResponse, Error> {
+    retrieve_response(&info.url, send_request, 3).await
 }
 
-fn send_request(
-    url: &str,
-) -> impl Future<
-    Item = ClientResponse<impl Stream<Item = Bytes, Error = PayloadError>>,
-    Error = SendRequestError,
-> {
+fn send_request(url: &str) -> SendClientRequest {
     info!("{}", url);
     let client = Client::default();
     client
@@ -48,40 +39,41 @@ fn send_request(
         .send()
 }
 
-fn retrieve_response(
-    mut res: ClientResponse<impl Stream<Item = Bytes, Error = PayloadError> + 'static>,
+async fn retrieve_response(
+    url: &str,
+    f: fn(&str) -> SendClientRequest,
     redirect_limit: u8,
-) -> Box<Future<Item = HttpResponse, Error = Error>> {
-    let status = res.status();
-    if status.is_success() {
-        Box::new(
-            res.body()
-                .limit(1_048_576) // 1MB
-                .from_err()
-                .and_then(|b| match rss::parse_rss(b) {
-                    Ok(r) => Ok(HttpResponse::Ok().json(r)),
-                    Err(e) => Ok(e.into()),
-                }),
-        )
-    } else if status.is_redirection() && redirect_limit > 0 {
-        match res.headers().get("location").and_then(|l| l.to_str().ok()) {
-            Some(url) => Box::new(
-                send_request(url)
-                    .map_err(Error::from)
-                    .and_then(move |r| retrieve_response(r, redirect_limit - 1)),
-            ),
-            _ => Box::new(future::ok::<HttpResponse, Error>(
-                HttpResponse::InternalServerError().finish(),
-            )),
+) -> Result<HttpResponse, Error> {
+    let mut res = f(url).await?;
+    let mut counter = 0;
+    loop {
+        if res.status().is_success() {
+            let b = res.body().limit(1_048_576).await?;
+            return match rss::parse_rss(b) {
+                Ok(r) => Ok(HttpResponse::Ok().json(r)),
+                Err(e) => Ok(e.into()),
+            };
         }
-    } else {
-        Box::new(future::ok::<HttpResponse, Error>(
-            HttpResponse::build(res.status()).finish(),
-        ))
+        if res.status().is_redirection() {
+            if counter > redirect_limit {
+                return Ok(HttpResponse::InternalServerError().finish());
+            }
+            let location = res.headers().get("location").and_then(|l| l.to_str().ok());
+            match location {
+                Some(url) => {
+                    counter += 1;
+                    res = f(url).await?;
+                    continue;
+                }
+                None => return Ok(HttpResponse::InternalServerError().finish()),
+            }
+        };
+        return Ok(HttpResponse::build(res.status()).finish());
     }
 }
 
-fn main() -> io::Result<()> {
+#[actix_rt::main]
+async fn main() -> io::Result<()> {
     simple_logger::init_with_level(log::Level::Info)
         .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
@@ -89,8 +81,8 @@ fn main() -> io::Result<()> {
 
     let mut server = HttpServer::new(|| {
         App::new()
-            .wrap(Cors::new())
-            .service(web::resource("/feed").route(web::get().to_async(get_feed)))
+            .wrap(Cors::new().finish())
+            .service(web::resource("/feed").route(web::get().to(get_feed)))
     });
 
     server = if let Some(l) = listenfd.take_tcp_listener(0)? {
@@ -104,7 +96,7 @@ fn main() -> io::Result<()> {
         server.bind(format!("{}:{}", host, port))?
     };
 
-    server.run()?;
+    server.run().await?;
 
     Ok(())
 }

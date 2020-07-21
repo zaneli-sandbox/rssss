@@ -5,17 +5,20 @@ authors = ["zaneli <shun.otani@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-actix = "0.8"
-actix-http = "0.2"
-actix-web = { version="1.0", features=["ssl"] }
+actix-cors = "0.2"
+actix-web = { version="2.0", features=["rustls"] }
+rustls = "0.17.0"
+actix-rt = "1.1"
 listenfd = "0.3"
+awc = "1.0"
+actix-http = "1.0"
+futures = "0.3"
 
-futures = "0.1"
-bytes = "0.4"
+bytes = "0.5"
 log = "0.4"
 simple_logger = "1.0"
 xml-rs = "0.8"
 serde = "1.0"
 serde_derive = "1.0"
 serde_json = "1.0"
-scraper = "*"
+scraper = "0.12"

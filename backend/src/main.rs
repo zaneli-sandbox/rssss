@@ -3,6 +3,7 @@ pub mod rss;
 
 use actix_cors::Cors;
 use actix_web::client::Client;
+use actix_web::http::header;
 use actix_web::web::Query;
 use actix_web::{web, App, Error, HttpResponse, HttpServer};
 use awc::SendClientRequest;
@@ -10,6 +11,7 @@ use listenfd::ListenFd;
 use log::info;
 use serde::Serialize;
 use serde_derive::Deserialize;
+use simple_logger::SimpleLogger;
 use std::env;
 use std::io;
 use std::time::Duration;
@@ -31,7 +33,7 @@ async fn get_feed(info: Query<Info>) -> Result<HttpResponse, Error> {
 
 fn send_request(url: &str) -> SendClientRequest {
     info!("{}", url);
-    let client = Client::default();
+    let client = Client::new();
     client
         .get(url)
         .header("User-Agent", "rssss")
@@ -74,14 +76,24 @@ async fn retrieve_response(
 
 #[actix_rt::main]
 async fn main() -> io::Result<()> {
-    simple_logger::init_with_level(log::Level::Info)
+    SimpleLogger::new()
+        .with_level(log::LevelFilter::Info)
+        .with_utc_timestamps()
+        .init()
         .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
     let mut listenfd = ListenFd::from_env();
 
     let mut server = HttpServer::new(|| {
+        let cors = Cors::default()
+            .allowed_origin_fn(|_origin, _req_head| true)
+            .allowed_methods(vec!["GET"])
+            .allowed_headers(vec![header::AUTHORIZATION, header::ACCEPT])
+            .allowed_header(header::CONTENT_TYPE)
+            .supports_credentials()
+            .max_age(3600);
         App::new()
-            .wrap(Cors::new().finish())
+            .wrap(cors)
             .service(web::resource("/feed").route(web::get().to(get_feed)))
     });
 

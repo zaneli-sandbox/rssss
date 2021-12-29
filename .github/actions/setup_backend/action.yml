@@ -1,0 +1,21 @@
+name: setup_backend
+runs:
+  using: composite
+  steps:
+    - name: Remove ant
+      # https://github.com/zaneli-sandbox/rssss/runs/4660062712?check_suite_focus=true#step:3:28
+      shell: bash -xe {0}
+      run: sudo apt-get remove ant
+    - name: Download openssl
+      shell: bash -xe {0}
+      run: curl https://www.openssl.org/source/openssl-1.0.2l.tar.gz | tar xz
+    - name: Remove preinstalled openssl
+      shell: bash -xe {0}
+      run: sudo apt-get remove openssl
+    - name: Install openssl
+      # https://docs.rs/openssl/0.10.16/src/openssl/ssl/mod.rs.html#2506
+      shell: bash -xe {0}
+      run: cd openssl-1.0.2l && ./config --prefix=/usr && make && sudo make install && ls -la && cd ../
+    - name: Show openssl version
+      shell: bash -xe {0}
+      run: openssl version

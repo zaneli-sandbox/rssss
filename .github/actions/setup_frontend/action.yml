@@ -1,0 +1,16 @@
+name: setup_frontend
+runs:
+  using: composite
+  steps:
+    - name: Install n
+      shell: bash -xe {0}
+      run: npm install n -g
+    - name: Switch node version
+      shell: bash -xe {0}
+      run: sudo n 8.17.0
+    - name: Show node version
+      shell: bash -xe {0}
+      run: node -v
+    - name: Install elm-app
+      shell: bash -xe {0}
+      run: npm install -g elm-app

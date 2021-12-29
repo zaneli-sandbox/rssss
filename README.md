@@ -1,4 +1,4 @@
-# rssss [![Build Status](https://travis-ci.org/zaneli-sandbox/rssss.svg?branch=master)](https://travis-ci.org/zaneli-sandbox/rssss)
+# rssss ![frontend status](https://github.com/zaneli-sandbox/rssss/actions/workflows/frontend.yml/badge.svg) ![backend status](https://github.com/zaneli-sandbox/rssss/actions/workflows/backend.yml/badge.svg)
 
 a simple rss viewer
 

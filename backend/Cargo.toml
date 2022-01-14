@@ -2,7 +2,7 @@
 name = "rssss"
 version = "0.1.0"
 authors = ["zaneli <shun.otani@gmail.com>"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 actix-cors = "0.5"

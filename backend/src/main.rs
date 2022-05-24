@@ -2,11 +2,11 @@ pub mod error;
 pub mod rss;
 
 use actix_cors::Cors;
-use actix_web::client::Client;
 use actix_web::http::header;
 use actix_web::web::Query;
-use actix_web::{web, App, Error, HttpResponse, HttpServer};
+use actix_web::{web, App, Error as ActixWebError, HttpResponse, HttpServer};
 use awc::SendClientRequest;
+use awc::{ClientBuilder, Connector};
 use listenfd::ListenFd;
 use log::info;
 use serde::Serialize;
@@ -27,25 +27,28 @@ impl<T: Serialize> From<error::Error<T>> for HttpResponse {
     }
 }
 
-async fn get_feed(info: Query<Info>) -> Result<HttpResponse, Error> {
-    retrieve_response(&info.url, send_request, 3).await
+async fn get_feed(info: Query<Info>) -> Result<HttpResponse, ActixWebError> {
+    match retrieve_response(&info.url, send_request, 3).await {
+        Ok(v) => Ok(v),
+        Err(e) => Ok(e.into()),
+    }
 }
 
 fn send_request(url: &str) -> SendClientRequest {
     info!("{}", url);
-    let client = Client::new();
-    client
-        .get(url)
-        .header("User-Agent", "rssss")
+    let client = ClientBuilder::new()
+        .connector(Connector::new())
+        .add_default_header(("User-Agent", "rssss"))
         .timeout(Duration::from_secs(60))
-        .send()
+        .finish();
+    client.get(url).send()
 }
 
 async fn retrieve_response(
     url: &str,
     f: fn(&str) -> SendClientRequest,
     redirect_limit: u8,
-) -> Result<HttpResponse, Error> {
+) -> Result<HttpResponse, crate::error::Error<String>> {
     let mut res = f(url).await?;
     let mut counter = 0;
     loop {

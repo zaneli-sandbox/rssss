@@ -1,5 +1,6 @@
-use actix_web::client::SendRequestError;
 use actix_web::error::PayloadError;
+use actix_web::ResponseError;
+use awc::error::SendRequestError;
 use serde_derive::Serialize;
 use xml::reader::Error as XMLReaderError;
 
@@ -55,3 +56,17 @@ impl<T> From<Vec<Error<T>>> for Error<T> {
         Error { messages: messages }
     }
 }
+
+impl<T: std::fmt::Display> std::fmt::Display for Error<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let messages = self
+            .messages
+            .iter()
+            .map(|v| v.to_string())
+            .collect::<Vec<String>>()
+            .join(",");
+        write!(f, "{}", messages)
+    }
+}
+
+impl<T: std::fmt::Debug + std::fmt::Display> ResponseError for Error<T> {}

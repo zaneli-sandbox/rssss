@@ -1,5 +1,5 @@
 use crate::error::{Error, InvalidRssError};
-use bytes::Buf;
+use actix_web::web::Bytes;
 use log::warn;
 use scraper::Html;
 use serde_derive::Serialize;
@@ -62,7 +62,7 @@ impl Rss {
     }
 }
 
-pub fn parse_rss(buf: bytes::Bytes) -> Result<Vec<Rss>, Error<String>> {
+pub fn parse_rss(buf: Bytes) -> Result<Vec<Rss>, Error<String>> {
     let mut errors = Vec::new();
     let result = parse(&buf, &mut RssV20::new());
     if result.is_ok() {
@@ -85,8 +85,8 @@ pub fn parse_rss(buf: bytes::Bytes) -> Result<Vec<Rss>, Error<String>> {
     return Err(errors.into());
 }
 
-fn parse(buf: &bytes::Bytes, parser: &mut dyn RssParser) -> Result<Vec<Rss>, Error<String>> {
-    let reader = EventReader::new(buf.bytes());
+fn parse(buf: &Bytes, parser: &mut dyn RssParser) -> Result<Vec<Rss>, Error<String>> {
+    let reader = EventReader::new(buf.as_ref());
 
     let mut root = true;
     for elem in reader {
